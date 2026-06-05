@@ -1,0 +1,30 @@
+# User config — contains local key and API secrets, NEVER commit
+config.json
+snapshot.json
+devices.json
+tinytuya.json
+tuya-raw.json
+
+# Downloaded map files
+*.bin
+*.txt
+map_*.png
+map_chunks_*.jsonl
+vacuum_log_*.txt
+vacuum_data_*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store

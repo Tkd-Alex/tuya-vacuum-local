@@ -1,0 +1,41 @@
+{
+  "_comment": "Copy this file to config.json and fill in your values.",
+  "_docs": "See README.md for instructions on finding device_id, device_ip, and device_key.",
+
+  "device_id":      "YOUR_DEVICE_ID",
+  "device_ip":      "192.168.1.X",
+  "device_key":     "YOUR_LOCAL_KEY",
+  "device_version": 3.3,
+
+  "_rooms_comment": "Map room IDs (0-4) to human-readable names. Discover IDs by running: python vacuum_cmd.py test-room --id 0",
+  "rooms": {
+    "0": "Room 0",
+    "1": "Room 1",
+    "2": "Room 2",
+    "3": "Room 3",
+    "4": "Room 4"
+  },
+
+  "_templates_comment": "Capture these with vacuum_listener.py while sending single-room commands from the app. See PROTOCOL.md.",
+  "room_templates": {
+    "0": "AA 00 0D 51 01 01 00 05 00 00 02 01 FF FF 01 00 5A",
+    "1": "AA 00 0D 51 01 01 01 05 00 01 04 01 FF FF 01 00 5E",
+    "2": "AA 00 0D 51 01 01 02 05 00 00 03 01 FF FF 01 01 5E",
+    "3": "AA 00 0D 51 01 01 03 05 00 00 03 01 FF FF 01 01 5F",
+    "4": "AA 00 0D 51 01 01 04 05 00 01 03 02 FF FF 01 00 61"
+  },
+
+  "_presets_comment": "Define cleaning presets. suction: 1=gentle 2=normal 3=strong 4=max. water: 0=off 1=low 2=middle 3=high.",
+  "presets": {
+    "eco":   {"suction": 1, "water": 1, "passes": 1, "carpet": 0, "label": "Eco"},
+    "normal":{"suction": 2, "water": 0, "passes": 1, "carpet": 1, "label": "Normal"},
+    "turbo": {"suction": 4, "water": 3, "passes": 2, "carpet": 1, "label": "Turbo"},
+    "mop":   {"suction": 2, "water": 3, "passes": 1, "carpet": 0, "label": "Mop Only"}
+  },
+
+  "_zones_comment": "Named map zones. Coordinates in map units (200 units = 1 metre). Use 'python vacuum_cmd.py decode-zone <base64>' to extract corners from app captures.",
+  "zones": {},
+
+  "_spots_comment": "Named spot-clean points. Coordinates in map units.",
+  "spots": {}
+}

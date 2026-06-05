@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background Circle (Tuya Orange) -->
+  <circle cx="256" cy="256" r="240" fill="#FF5500" />
+  
+  <!-- Robot Body -->
+  <circle cx="256" cy="270" r="160" fill="#FFFFFF" />
+  
+  <!-- Lidar Tower -->
+  <circle cx="256" cy="180" r="45" fill="#EEEEEE" stroke="#CCCCCC" stroke-width="2" />
+  <circle cx="256" cy="180" r="25" fill="#333333" />
+  
+  <!-- Cleaning Lines (The "Vacuum" effect) -->
+  <g stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" opacity="0.8">
+    <line x1="160" y1="430" x2="352" y2="430" />
+    <line x1="190" y1="460" x2="322" y2="460" />
+  </g>
+  
+  <!-- Logo Accent (Tuya "t" stylized) -->
+  <path d="M240 260 L240 320 L272 320 M240 290 L272 290" fill="none" stroke="#FF5500" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

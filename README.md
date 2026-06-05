@@ -1,5 +1,9 @@
 # tuya-vacuum-local
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tkd-Alex/tuya-vacuum-local/main/custom_components/tuya_vacuum/brand/logo.svg" width="150" height="150" alt="Tuya Vacuum Local Logo">
+</p>
+
 Local control of Tuya-based robot vacuums from Home Assistant — no cloud required for cleaning commands, full map support via Tuya Cloud API.
 
 **Tested on:** Philips HomeRun Series 3000/3100 (XU3100)  

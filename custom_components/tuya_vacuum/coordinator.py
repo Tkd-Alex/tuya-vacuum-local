@@ -21,14 +21,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 try:
-    import lz4.block as lz4b
-    HAS_LZ4 = True
-except ImportError:
-    HAS_LZ4 = False
-
-try:
     from PIL import Image, ImageDraw, ImageFont
-    import numpy as np
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -131,8 +124,8 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
     def fetch_and_render_map(self) -> bytes | None:
         """Download latest map from Tuya Cloud and render as PNG bytes."""
         import requests as req
-        if not HAS_LZ4 or not HAS_PIL:
-            _LOGGER.warning("lz4/Pillow not installed — map rendering disabled")
+        if not HAS_PIL:
+            _LOGGER.warning("Pillow not installed — map rendering disabled")
             return None
 
         cfg    = self._config

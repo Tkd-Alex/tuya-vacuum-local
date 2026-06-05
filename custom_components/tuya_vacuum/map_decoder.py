@@ -1,9 +1,59 @@
-"""LZ4 map decoder for Tuya Vacuum Local."""
+"""Pure-python LZ4 block decompressor and map renderer for Tuya Vacuum Local."""
 from __future__ import annotations
 import io, os, struct
-import lz4.block as lz4b
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+# ── Pure Python LZ4 Decompressor ──────────────────────────────────
+
+def lz4_decompress(source: bytes, uncompressed_size: int) -> bytes:
+    """
+    Decompress LZ4 block data. 
+    Simplified version for Tuya vacuum maps.
+    """
+    src = io.BytesIO(source)
+    dst = bytearray()
+    
+    while True:
+        token_byte = src.read(1)
+        if not token_byte: break
+        token = token_byte[0]
+        
+        # Literal length
+        lit_len = token >> 4
+        if lit_len == 0xF:
+            while True:
+                b = src.read(1)[0]
+                lit_len += b
+                if b != 0xFF: break
+        
+        # Copy literals
+        dst.extend(src.read(lit_len))
+        
+        if len(dst) >= uncompressed_size: break
+        
+        # Match offset
+        offset_bytes = src.read(2)
+        if not offset_bytes: break
+        offset = struct.unpack("<H", offset_bytes)[0]
+        if offset == 0: break
+        
+        # Match length
+        match_len = (token & 0xF) + 4
+        if match_len == 0xF + 4:
+            while True:
+                b = src.read(1)[0]
+                match_len += b
+                if b != 0xFF: break
+        
+        # Copy match
+        pos = len(dst) - offset
+        for _ in range(match_len):
+            dst.append(dst[pos])
+            pos += 1
+            
+    return bytes(dst[:uncompressed_size])
+
+# ── Renderer ──────────────────────────────────────────────────────
 
 ROOM_CELLS  = [0x00, 0x04, 0x08, 0x0C, 0x10]
 ROOM_COLORS = [
@@ -51,17 +101,21 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
     total  = flds[10]
     clen   = flds[11]
 
-    dec          = lz4b.decompress(layout_raw[24:24+clen], uncompressed_size=total)
+    # Use our pure-python decompressor
+    dec          = lz4_decompress(layout_raw[24:24+clen], uncompressed_size=total)
     grid         = dec[:W*H]
     room_section = dec[W*H:]
     room_names   = _room_names(room_section)
 
-    arr = np.zeros((H, W, 3), np.uint8)
-    for r in range(H):
-        for c in range(W):
-            arr[r, c] = _colour(grid[r*W+c])
-
-    img  = Image.fromarray(arr).resize((W*scale, H*scale), Image.NEAREST)
+    # Create image using PIL directly (removes numpy dependency)
+    img = Image.new("RGB", (W, H))
+    pixels = []
+    for v in grid:
+        pixels.append(_colour(v))
+    img.putdata(pixels)
+    
+    # Resize and draw
+    img  = img.resize((W*scale, H*scale), Image.NEAREST)
     draw = ImageDraw.Draw(img)
     font = _font(18)
     fsm  = _font(13)

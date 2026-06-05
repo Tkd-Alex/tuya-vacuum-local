@@ -4,9 +4,7 @@ import base64, struct, time
 from typing import Any
 
 from homeassistant.components.vacuum import (
-    StateVacuumEntity, VacuumEntityFeature,
-    STATE_CLEANING, STATE_DOCKED, STATE_PAUSED,
-    STATE_RETURNING, STATE_IDLE, STATE_ERROR,
+    StateVacuumEntity, VacuumEntityFeature, VacuumActivity,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -26,19 +24,19 @@ _SYNC  = "qgACVwFYqgADVQEAVqoAAzkBADqqAAMTAQAUqgADUwEAVA=="
 _ROOM_CELL = [0x00, 0x04, 0x08, 0x0C, 0x10]
 
 STATUS_MAP = {
-    "standby":     STATE_IDLE,
-    "charging":    STATE_DOCKED,
-    "charge_done": STATE_DOCKED,
-    "cleaning":    STATE_CLEANING,
-    "smart":       STATE_CLEANING,
-    "selectroom":  STATE_CLEANING,
-    "zone_clean":  STATE_CLEANING,
-    "goto_pos":    STATE_CLEANING,
-    "paused":      STATE_PAUSED,
-    "pause":       STATE_PAUSED,
-    "goto_charge": STATE_RETURNING,
-    "repositing":  STATE_RETURNING,
-    "fault":       STATE_ERROR,
+    "standby":     VacuumActivity.IDLE,
+    "charging":    VacuumActivity.DOCKED,
+    "charge_done": VacuumActivity.DOCKED,
+    "cleaning":    VacuumActivity.CLEANING,
+    "smart":       VacuumActivity.CLEANING,
+    "selectroom":  VacuumActivity.CLEANING,
+    "zone_clean":  VacuumActivity.CLEANING,
+    "goto_pos":    VacuumActivity.CLEANING,
+    "paused":      VacuumActivity.PAUSED,
+    "pause":       VacuumActivity.PAUSED,
+    "goto_charge": VacuumActivity.RETURNING,
+    "repositing":  VacuumActivity.RETURNING,
+    "fault":       VacuumActivity.ERROR,
 }
 
 FEATURES = (
@@ -75,9 +73,9 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
     # ── State ──────────────────────────────────────────────────
 
     @property
-    def state(self) -> str:
+    def activity(self) -> VacuumActivity:
         st = (self.coordinator.data or {}).get("status", "standby")
-        return STATUS_MAP.get(st, STATE_IDLE)
+        return STATUS_MAP.get(st, VacuumActivity.IDLE)
 
     @property
     def battery_level(self) -> int:

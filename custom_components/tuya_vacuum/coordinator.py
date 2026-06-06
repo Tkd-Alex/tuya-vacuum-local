@@ -17,6 +17,8 @@ from .const import (
     DOMAIN, REGIONS, UPDATE_INTERVAL,
     DP_BATTERY, DP_STATUS, DP_MODE, DP_SUCTION, DP_WATER,
     DP_CLEAN_TIME, DP_CLEAN_AREA, DP_REQUEST, DP_COMMAND_TRANS, DP_FAULT,
+    DP_TOTAL_AREA, DP_TOTAL_COUNT, DP_TOTAL_TIME,
+    DP_EDGE_BRUSH, DP_ROLL_BRUSH, DP_FILTER, DP_DUST_CLOTH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,6 +86,13 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             "water":      dps.get(str(DP_WATER), "closed"),
             "clean_time": dps.get(str(DP_CLEAN_TIME), 0),
             "clean_area": dps.get(str(DP_CLEAN_AREA), 0),
+            "total_area": dps.get(str(DP_TOTAL_AREA), 0),
+            "total_count": dps.get(str(DP_TOTAL_COUNT), 0),
+            "total_time": dps.get(str(DP_TOTAL_TIME), 0),
+            "edge_brush": dps.get(str(DP_EDGE_BRUSH), 0),
+            "roll_brush": dps.get(str(DP_ROLL_BRUSH), 0),
+            "filter":     dps.get(str(DP_FILTER), 0),
+            "dust_cloth": dps.get(str(DP_DUST_CLOTH), 0),
             "fault":      dps.get(str(DP_FAULT), 0),
         }
 

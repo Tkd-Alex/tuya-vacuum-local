@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import TuyaVacuumCoordinator
 
-PLATFORMS = ["vacuum", "image"]
+PLATFORMS = ["vacuum", "image", "sensor"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = TuyaVacuumCoordinator(hass, dict(entry.data))

@@ -178,18 +178,22 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         waters   = _pad(params.get("water"),   len(rooms), None)
         passes   = _pad(params.get("passes"),  len(rooms), 1)
 
-        c.send_dp15(_WAKE);  time.sleep(0.4)
-        c.send_dp15(_SYNC);  time.sleep(0.4)
-
         room_templates = self._entry.data.get("room_templates", {})
+        
+        # Build the sequence for a single persistent connection
+        sequence = [
+            (DP_COMMAND_TRANS, _WAKE),
+            (DP_COMMAND_TRANS, _SYNC),
+        ]
+        
         for i, rid in enumerate(rooms):
             frame = _build_room(rid, suctions[i], waters[i], passes[i], room_templates)
-            c.send_dp15(_b64(frame))
-            time.sleep(0.4)
+            sequence.append((DP_COMMAND_TRANS, _b64(frame)))
 
-        c.send_dp15(_b64(_aa(0x27, [0x01, len(rooms)] + list(rooms))))
-        time.sleep(0.4)
-        c.send_multiple({DP_POWER: True, DP_MODE: MODE_ROOM})
+        sequence.append((DP_COMMAND_TRANS, _b64(_aa(0x27, [0x01, len(rooms)] + list(rooms)))))
+        sequence.append({DP_POWER: True, DP_MODE: MODE_ROOM})
+
+        c.send_sequence(sequence)
 
     def _do_preset(self, params: dict) -> None:
         presets = {

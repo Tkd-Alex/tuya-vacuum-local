@@ -1,7 +1,7 @@
 # Tuya Vacuum Local (Advanced Companion)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Tkd-Alex/tuya-vacuum-local/main/custom_components/tuya_vacuum/brand/logo.svg" width="150" height="150" alt="Tuya Vacuum Local Logo">
+  <img src="images/logo.svg" width="150" height="150" alt="Tuya Vacuum Local Logo">
 </p>
 
 **Advanced Map and Binary Control for Tuya-based Vacuums.**

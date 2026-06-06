@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64, hashlib, hmac, io, json, logging, struct, time
+import requests as req
 from datetime import timedelta
 from typing import Any
 
@@ -15,7 +16,7 @@ from .const import (
     CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_REGION,
     DOMAIN, REGIONS, UPDATE_INTERVAL,
     DP_BATTERY, DP_STATUS, DP_MODE, DP_SUCTION, DP_WATER,
-    DP_CLEAN_TIME, DP_CLEAN_AREA, DP_REQUEST, DP_COMMAND_TRANS,
+    DP_CLEAN_TIME, DP_CLEAN_AREA, DP_REQUEST, DP_COMMAND_TRANS, DP_FAULT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,30 +36,56 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            # No update interval — we don't poll to avoid TCP conflicts
-            update_interval=None,
+            update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
         self._config       = config
         self._map_image: bytes | None = None
         self._token_cache  = {"token": None, "expiry": 0.0}
 
-    # ── Stateless connections ─────────────────────────────────────
-
-    def _get_one_shot_device(self):
-        """Create a device instance that closes the socket immediately."""
-        d = tinytuya.Device(
-            self._config[CONF_DEVICE_ID],
-            self._config[CONF_DEVICE_IP],
-            self._config[CONF_DEVICE_KEY],
-            version=float(self._config.get(CONF_DEVICE_VERSION, 3.3)),
-        )
-        d.set_socketTimeout(5)
-        d.set_socketPersistent(False)
-        return d
+    # ── Cloud-based polling ───────────────────────────────────────
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Manual update or event-driven update for the map."""
-        return {}
+        """Fetch status from Tuya Cloud API."""
+        try:
+            return await self.hass.async_add_executor_job(self._fetch_cloud_status)
+        except Exception as err:
+            _LOGGER.error("Cloud status update failed: %s", err)
+            # Return empty or old data on failure to keep entities alive
+            return self.data or {}
+
+    def _fetch_cloud_status(self) -> dict[str, Any]:
+        """Call Tuya Cloud API to get device status."""
+        did    = self._config[CONF_DEVICE_ID]
+        token  = self._get_cloud_token()
+        region = self._config.get(CONF_REGION, "eu")
+        base   = REGIONS.get(region, REGIONS["eu"])
+        
+        path = f"/v1.0/devices/{did}/status"
+        r = req.get(base + path, headers=self._cloud_sign("GET", path, token), timeout=10).json()
+        
+        if not r.get("success"):
+            raise UpdateFailed(f"Tuya Cloud status error: {r}")
+
+        # Map DP list to friendly dictionary
+        status_list = r.get("result", [])
+        dps = {str(item["code"]): item["value"] for item in status_list}
+        
+        # Also try to get general device info (for name/online status)
+        path_info = f"/v1.0/devices/{did}"
+        r_info = req.get(base + path_info, headers=self._cloud_sign("GET", path_info, token), timeout=10).json()
+        online = r_info.get("result", {}).get("online", True)
+
+        return {
+            "online":     online,
+            "battery":    dps.get(str(DP_BATTERY), 0),
+            "status":     dps.get(str(DP_STATUS), "unknown"),
+            "mode":       dps.get(str(DP_MODE), "smart"),
+            "suction":    dps.get(str(DP_SUCTION), "normal"),
+            "water":      dps.get(str(DP_WATER), "closed"),
+            "clean_time": dps.get(str(DP_CLEAN_TIME), 0),
+            "clean_area": dps.get(str(DP_CLEAN_AREA), 0),
+            "fault":      dps.get(str(DP_FAULT), 0),
+        }
 
     # ── Vacuum commands (one-shot) ────────────────────────────────
 

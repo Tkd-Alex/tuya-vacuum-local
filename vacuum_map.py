@@ -47,7 +47,7 @@ def _sign(client_id, client_secret, method, path, token=""):
     bh  = hashlib.sha256(b"").hexdigest()
     s2s = "\n".join([method, bh, "", path])
     msg = client_id + (token or "") + ts + s2s
-    sg  = hmac.new(client_secret.encode(), msg=msg.encode(),
+    sg  = hmac.new(key=client_secret.encode(), msg=msg.encode(),
                    digestmod=hashlib.sha256).hexdigest().upper()
     return {"client_id": client_id, "sign": sg, "t": ts,
             "sign_method": "HMAC-SHA256", "access_token": token or ""}

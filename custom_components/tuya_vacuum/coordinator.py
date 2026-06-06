@@ -86,7 +86,7 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         bh  = hashlib.sha256(b"").hexdigest()
         s2s = "\n".join([method, bh, "", path])
         msg = cid + (token or "") + ts + s2s
-        sg  = hmac.new(cs.encode(), msg=msg.encode(),
+        sg  = hmac.new(key=cs.encode(), msg=msg.encode(),
                        digestmod=hashlib.sha256).hexdigest().upper()
         return {"client_id": cid, "sign": sg, "t": ts,
                 "sign_method": "HMAC-SHA256", "access_token": token or ""}

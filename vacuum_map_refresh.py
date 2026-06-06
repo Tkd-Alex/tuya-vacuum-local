@@ -68,7 +68,7 @@ def _sign(cfg, method, path, token=""):
     s2s = "\n".join([method, bh, "", path])
     msg = cfg["tuya_client_id"] + (token or "") + ts + s2s
     sg  = hmac.new(
-        cfg["tuya_client_secret"].encode(),
+        key=cfg["tuya_client_secret"].encode(),
         msg=msg.encode(), digestmod=hashlib.sha256
     ).hexdigest().upper()
     return {

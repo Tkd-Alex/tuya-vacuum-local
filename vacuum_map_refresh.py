@@ -188,10 +188,9 @@ def decode_robot_path(raw, ox, oy, res):
             for i in range(0, len(dec)-3, 4):
                 x = struct.unpack(">h", dec[i:i+2])[0]
                 y = struct.unpack(">h", dec[i+2:i+4])[0]
-                if abs(x) < 10000 and abs(y) < 10000:
-                    c = int((x + ox) / units_per_cell)
-                    r = int((y + oy) / units_per_cell)
-                    coords.append((c, r))
+                c = int((x + ox) / units_per_cell)
+                r = int((y + oy) / units_per_cell)
+                coords.append((c, r))
             if len(coords) > 10:
                 print(f"Path Format A: {len(coords)} points")
                 return coords
@@ -204,10 +203,9 @@ def decode_robot_path(raw, ox, oy, res):
         for i in range(0, len(raw)-3, 4):
             x = struct.unpack(">h", raw[i:i+2])[0]
             y = struct.unpack(">h", raw[i+2:i+4])[0]
-            if abs(x) < 5000 and abs(y) < 5000:
-                c = int((x + ox) / units_per_cell)
-                r = int((y + oy) / units_per_cell)
-                coords.append((c, r))
+            c = int((x + ox) / units_per_cell)
+            r = int((y + oy) / units_per_cell)
+            coords.append((c, r))
         if len(coords) > 10:
             print(f"Path Format B: {len(coords)} points")
             return coords

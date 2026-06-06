@@ -540,6 +540,8 @@ Examples:
     sub.add_parser("charge", help="Return to dock")
     sub.add_parser("locate", help="Play locating sound")
     sub.add_parser("status", help="Print current device status (JSON)")
+    sub.add_parser("resume", help="Clear fault and resume cleaning")
+    sub.add_parser("map-request", help="Trigger local map push via DP16")
 
     # raw
     rw = sub.add_parser("raw", help="Send a raw base64 string directly to DP15")

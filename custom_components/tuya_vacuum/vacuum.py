@@ -85,11 +85,6 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         return STATUS_MAP.get(st, VacuumActivity.IDLE)
 
     @property
-    def battery_level(self) -> int | None:
-        """Return the battery level from cloud status."""
-        return (self.coordinator.data or {}).get("battery")
-
-    @property
     def fan_speed(self) -> str | None:
         """Return the fan speed."""
         return (self.coordinator.data or {}).get("suction")

@@ -1,0 +1,23 @@
+clean_room_by_name:
+  name: Clean a room by its name
+  description: Sends the vacuum to a specific room using its configured name.
+  fields:
+    room_name:
+      name: Room Name
+      description: The name of the room as configured in the integration options.
+      example: "Kitchen"
+      required: true
+    suction:
+      name: Suction Level
+      description: Optional suction level (1=gentle, 2=normal, 3=strong, 4=max).
+      example: 2
+      required: false
+    water:
+      name: Water Level
+      description: Optional water level (0=off, 1=low, 2=middle, 3=high).
+      example: 1
+      required: false
+
+refresh_map:
+  name: Refresh Map
+  description: Forces an immediate map update from Tuya Cloud.

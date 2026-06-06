@@ -1,33 +1,45 @@
-# tuya-vacuum-local
+# Tuya Vacuum Local (Advanced Companion)
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Tkd-Alex/tuya-vacuum-local/main/custom_components/tuya_vacuum/brand/logo.svg" width="150" height="150" alt="Tuya Vacuum Local Logo">
 </p>
 
-Local control of Tuya-based robot vacuums from Home Assistant — no cloud required for cleaning commands, full map support via Tuya Cloud API.
+**Advanced Map and Binary Control for Tuya-based Vacuums.**
 
-**Tested on:** Philips HomeRun Series 3000/3100 (XU3100)  
-**Also compatible with:** Other vacuums sharing the same Tuya firmware (same DP schema)
+This integration is designed as a **Companion** to the excellent [make-all/tuya-local](https://github.com/make-all/tuya-local) project.
+
+## Why this exists?
+While `tuya-local` is the gold standard for passive sensors (battery, brush life, etc.) and basic control, it does not support:
+1. **Cloud Map Rendering**: Fetching and decoding the proprietary LZ4 map format.
+2. **Advanced Binary Commands (DP15)**: Room-by-room cleaning with custom order, zone cleaning, and spot cleaning.
+
+## How it works (The Companion Architecture)
+To avoid the "One TCP connection" limitation of Tuya devices:
+* **TuyaLocal** maintains the primary connection for sensors.
+* **Tuya Vacuum Local** uses "stateless" one-shot connections: it connects, sends an advanced command (like "Clean Kitchen"), and disconnects immediately, allowing `tuya-local` to resume its monitoring without conflict.
 
 ---
 
 ## What you get
 
-| Feature | How |
+| Feature | Provider |
 |---|---|
-| Room-by-room cleaning with order | Binary protocol via LAN (DP15) |
-| Per-room suction + mop level + passes | Same |
-| Zone cleaning (draw rectangles) | Same |
-| Spot cleaning (single point) | Same |
-| Named presets (Wee&Dry, Aspirazione, Silenziosa, Intensiva) | Same |
-| Fault recovery (robot stuck) | CMD 0x4C via LAN |
-| Floor map rendered as PNG | Tuya Cloud API + LZ4 decode |
-| Cleaning path overlay (white lines) | Cloud API `robot_map` — see below |
-| HA vacuum entity (start/stop/pause/locate) | LAN via tinytuya |
-| HA image entity (live map card) | Cloud API, auto-refresh after cleaning |
-| HACS installation | `custom_components/tuya_vacuum/` |
+| Passive Sensors (Battery, Brushes, Filter) | **TuyaLocal** |
+| Basic Controls (Start, Pause, Dock) | **TuyaLocal** |
+| **Floor Map (Live & Static PNG)** | **This integration** |
+| **Room Cleaning (Custom order/settings)** | **This integration** |
+| **Zone & Spot Cleaning** | **This integration** |
 
 ---
+
+## Installation & Setup
+
+### Prerequisites
+1. Install [TuyaLocal](https://github.com/make-all/tuya-local) and configure your vacuum (we recommend the `rowenta_xplorer75s_vacuum` profile for Philips XU3100 models).
+2. Ensure the vacuum is working in Home Assistant.
+
+### Option A — HACS (Recommended)
+... (rest of HACS instructions) ...
 
 ## The white path lines — how it works
 

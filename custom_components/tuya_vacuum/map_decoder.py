@@ -91,63 +91,88 @@ def _room_names(data: bytes) -> dict:
         i += 1
     return rooms
 
+def _error_img(msg: str, W: int = 512, H: int = 512) -> bytes:
+    """Return a PNG with error message."""
+    img = Image.new("RGB", (W, H), (240, 200, 200))
+    draw = ImageDraw.Draw(img)
+    draw.text((W//2, H//2), f"Map Error:\n{msg}", fill=(150, 0, 0), anchor="mm")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
                       scale: int = 4) -> bytes:
     """Decode LZ4 map binary and return PNG as bytes."""
-    flds = [struct.unpack(">H", layout_raw[i:i+2])[0] for i in range(0, 24, 2)]
-    W, H   = flds[2], flds[3]
-    ox, oy = _shrink(flds[4]), _shrink(flds[5])
-    res    = flds[6]
-    total  = flds[10]
-    clen   = flds[11]
+    try:
+        if not layout_raw or len(layout_raw) < 24:
+            return _error_img("Invalid map data (too short)")
 
-    # Use our pure-python decompressor
-    dec          = lz4_decompress(layout_raw[24:24+clen], uncompressed_size=total)
-    grid         = dec[:W*H]
-    room_section = dec[W*H:]
-    room_names   = _room_names(room_section)
+        flds = [struct.unpack(">H", layout_raw[i:i+2])[0] for i in range(0, 24, 2)]
+        W, H   = flds[2], flds[3]
+        ox, oy = _shrink(flds[4]), _shrink(flds[5])
+        res    = flds[6]
+        total  = flds[10]
+        clen   = flds[11]
 
-    # Create image using PIL directly (removes numpy dependency)
-    img = Image.new("RGB", (W, H))
-    pixels = []
-    for v in grid:
-        pixels.append(_colour(v))
-    img.putdata(pixels)
-    
-    # Resize and draw
-    img  = img.resize((W*scale, H*scale), Image.NEAREST)
-    draw = ImageDraw.Draw(img)
-    font = _font(18)
-    fsm  = _font(13)
+        if W == 0 or H == 0 or clen == 0:
+            return _error_img(f"Invalid dimensions: {W}x{H}")
 
-    # Room labels
-    for idx, name in room_names.items():
-        cv  = ROOM_CELLS[idx]
-        pos = [(r,c) for r in range(H) for c in range(W) if grid[r*W+c]==cv]
-        if not pos: continue
-        rows=[p[0] for p in pos]; cols=[p[1] for p in pos]
-        cr,cc = sum(rows)//len(rows), sum(cols)//len(cols)
-        px,py = cc*scale+scale//2, cr*scale+scale//2
-        bb = font.getbbox(name); tw,th,pad = bb[2]-bb[0],bb[3]-bb[1],8
-        draw.rounded_rectangle(
-            [px-tw//2-pad,py-th//2-pad,px+tw//2+pad,py+th//2+pad],
-            radius=8, fill=(255,255,255), outline=(100,100,100), width=1)
-        draw.text((px,py), name, fill=(40,40,40), font=font, anchor="mm")
+        # Decompress
+        try:
+            dec = lz4_decompress(layout_raw[24:24+clen], uncompressed_size=total)
+        except Exception as e:
+            return _error_img(f"Decompression failed: {e}")
 
-    # Dock
-    upc = res*2
-    dc,dr = int(ox/upc), int(oy/upc)
-    if 0<=dc<W and 0<=dr<H:
-        dx,dy,R = dc*scale+scale//2, dr*scale+scale//2, 12
-        draw.ellipse([dx-R,dy-R,dx+R,dy+R], fill=(50,200,80), outline=(20,140,40), width=2)
-        draw.text((dx,dy), "⚡", fill=(255,255,255), font=fsm, anchor="mm")
+        grid         = dec[:W*H]
+        room_section = dec[W*H:]
+        room_names   = _room_names(room_section)
 
-    # Scale bar
-    bar = (100//res)*scale
-    bx,by = 20, H*scale-35
-    draw.rectangle([bx,by,bx+bar,by+5], fill=(80,80,80))
-    draw.text((bx+bar//2,by+14), "1 m", fill=(80,80,80), font=fsm, anchor="mm")
+        # Create image
+        img = Image.new("RGB", (W, H))
+        pixels = [_colour(v) for v in grid]
+        img.putdata(pixels)
+        
+        # Resize and draw
+        img  = img.resize((W*scale, H*scale), Image.NEAREST)
+        draw = ImageDraw.Draw(img)
+        font = _font(18)
+        fsm  = _font(13)
 
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+        # Room labels
+        for idx, name in room_names.items():
+            try:
+                cv  = ROOM_CELLS[idx] if idx < len(ROOM_CELLS) else None
+                if cv is None: continue
+                pos = [(r,c) for r in range(H) for c in range(W) if grid[r*W+c]==cv]
+                if not pos: continue
+                rows=[p[0] for p in pos]; cols=[p[1] for p in pos]
+                cr,cc = sum(rows)//len(rows), sum(cols)//len(cols)
+                px,py = cc*scale+scale//2, cr*scale+scale//2
+                bb = font.getbbox(name); tw,th,pad = bb[2]-bb[0],bb[3]-bb[1],8
+                draw.rounded_rectangle(
+                    [px-tw//2-pad,py-th//2-pad,px+tw//2+pad,py+th//2+pad],
+                    radius=8, fill=(255,255,255), outline=(100,100,100), width=1)
+                draw.text((px,py), name, fill=(40,40,40), font=font, anchor="mm")
+            except Exception: continue
+
+        # Dock
+        upc = res*2
+        dc,dr = int(ox/upc), int(oy/upc)
+        if 0<=dc<W and 0<=dr<H:
+            dx,dy,R = dc*scale+scale//2, dr*scale+scale//2, 12
+            draw.ellipse([dx-R,dy-R,dx+R,dy+R], fill=(50,200,80), outline=(20,140,40), width=2)
+            draw.text((dx,dy), "⚡", fill=(255,255,255), font=fsm, anchor="mm")
+
+        # Scale bar
+        bar = (100//res)*scale
+        bx,by = 20, H*scale-35
+        draw.rectangle([bx,by,bx+bar,by+5], fill=(80,80,80))
+        draw.text((bx+bar//2,by+14), "1 m", fill=(80,80,80), font=fsm, anchor="mm")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue()
+
+    except Exception as e:
+        import traceback
+        return _error_img(f"Render error: {e}\n{traceback.format_exc()[:100]}")

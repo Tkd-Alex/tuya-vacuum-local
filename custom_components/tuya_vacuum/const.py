@@ -29,6 +29,14 @@ DP_BATTERY      = 8
 DP_SUCTION      = 9
 DP_WATER        = 10
 DP_LOCATE       = 11
+DP_FAULT        = 28
+DP_TOTAL_AREA   = 29
+DP_TOTAL_COUNT  = 30
+DP_TOTAL_TIME   = 31
+DP_EDGE_BRUSH   = 17
+DP_ROLL_BRUSH   = 19
+DP_FILTER       = 21
+DP_DUST_CLOTH   = 23
 DP_REQUEST      = 16   # "get_both" triggers map push
 DP_COMMAND_TRANS = 15  # binary command channel (map frames + control)
 

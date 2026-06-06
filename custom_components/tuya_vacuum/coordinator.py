@@ -35,61 +35,46 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            # No update interval — we don't poll to avoid TCP conflicts
+            update_interval=None,
         )
         self._config       = config
-        self._device: tinytuya.Device | None = None
         self._map_image: bytes | None = None
         self._token_cache  = {"token": None, "expiry": 0.0}
 
-    # ── Device connection ─────────────────────────────────────────
+    # ── Stateless connections ─────────────────────────────────────
 
-    def _get_device(self) -> tinytuya.Device:
-        if self._device is None:
-            cfg = self._config
-            self._device = tinytuya.Device(
-                cfg[CONF_DEVICE_ID],
-                cfg[CONF_DEVICE_IP],
-                cfg[CONF_DEVICE_KEY],
-                version=float(cfg.get(CONF_DEVICE_VERSION, 3.3)),
-            )
-            self._device.set_socketTimeout(6)
-        return self._device
-
-    # ── HA coordinator update ─────────────────────────────────────
+    def _get_one_shot_device(self):
+        """Create a device instance that closes the socket immediately."""
+        d = tinytuya.Device(
+            self._config[CONF_DEVICE_ID],
+            self._config[CONF_DEVICE_IP],
+            self._config[CONF_DEVICE_KEY],
+            version=float(self._config.get(CONF_DEVICE_VERSION, 3.3)),
+        )
+        d.set_socketTimeout(5)
+        d.set_socketPersistent(False)
+        return d
 
     async def _async_update_data(self) -> dict[str, Any]:
-        try:
-            return await self.hass.async_add_executor_job(self._fetch_status)
-        except Exception as err:
-            raise UpdateFailed(f"Vacuum status error: {err}") from err
+        """Manual update or event-driven update for the map."""
+        return {}
 
-    def _fetch_status(self) -> dict[str, Any]:
-        d   = self._get_device()
-        st  = d.status()
-        if not st or "dps" not in st:
-            raise UpdateFailed("Empty status response")
-        dps = st["dps"]
-        return {
-            "battery":    dps.get(str(DP_BATTERY), 0),
-            "status":     dps.get(str(DP_STATUS), "unknown"),
-            "mode":       dps.get(str(DP_MODE), "smart"),
-            "suction":    dps.get(str(DP_SUCTION), "normal"),
-            "water":      dps.get(str(DP_WATER), "closed"),
-            "clean_time": dps.get(str(DP_CLEAN_TIME), 0),
-            "clean_area": dps.get(str(DP_CLEAN_AREA), 0),
-        }
-
-    # ── Vacuum commands (called from vacuum.py) ───────────────────
+    # ── Vacuum commands (one-shot) ────────────────────────────────
 
     def send_dp(self, dp: int, value: Any) -> None:
-        self._get_device().set_value(dp, value)
+        """Connect, send DP, and disconnect."""
+        d = self._get_one_shot_device()
+        d.set_value(dp, value)
 
     def send_multiple(self, values: dict) -> None:
-        self._get_device().set_multiple_values(values)
+        """Connect, send multiple DPs, and disconnect."""
+        d = self._get_one_shot_device()
+        d.set_multiple_values(values)
 
     def send_dp15(self, b64: str) -> None:
-        self._get_device().set_value(DP_COMMAND_TRANS, b64)
+        """Connect, send raw DP15, and disconnect."""
+        self.send_dp(DP_COMMAND_TRANS, b64)
 
     # ── Map fetching ──────────────────────────────────────────────
 

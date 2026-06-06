@@ -60,6 +60,7 @@ async def async_setup_entry(
 
 
 class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
+    """Vacuum entity that acts as a proxy for advanced commands."""
     _attr_has_entity_name = True
     _attr_name = None
     _attr_supported_features = FEATURES
@@ -67,32 +68,32 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
 
     def __init__(self, coordinator: TuyaVacuumCoordinator, entry: ConfigEntry):
         super().__init__(coordinator)
-        self._attr_unique_id = f"{entry.entry_id}_vacuum"
+        self._attr_unique_id = f"{entry.entry_id}_advanced_control"
         self._entry = entry
 
-    # ── State ──────────────────────────────────────────────────
+    # ── State (Proxied from Coordinator/TuyaLocal in future) ──────
 
     @property
     def activity(self) -> VacuumActivity:
-        st = (self.coordinator.data or {}).get("status", "standby")
-        return STATUS_MAP.get(st, VacuumActivity.IDLE)
+        """Return the current activity. We return IDLE as we are a proxy."""
+        return VacuumActivity.IDLE
 
     @property
-    def battery_level(self) -> int:
-        return (self.coordinator.data or {}).get("battery", 0)
+    def battery_level(self) -> int | None:
+        """Return the battery level from TuyaLocal if available."""
+        return None
 
     @property
-    def fan_speed(self) -> str:
-        return (self.coordinator.data or {}).get("suction", "normal")
+    def fan_speed(self) -> str | None:
+        """Return the fan speed."""
+        return None
 
     @property
     def extra_state_attributes(self) -> dict:
-        d = self.coordinator.data or {}
+        """Return extra attributes."""
         return {
-            "mode":       d.get("mode"),
-            "water":      d.get("water"),
-            "clean_time": d.get("clean_time"),
-            "clean_area": d.get("clean_area"),
+            "integration": "Companion for TuyaLocal",
+            "note": "Use TuyaLocal entity for passive monitoring"
         }
 
     # ── Basic services ─────────────────────────────────────────

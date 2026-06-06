@@ -73,32 +73,38 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
 
     @property
     def available(self) -> bool:
-        """Return True as this is a command proxy and doesn't rely on polling availability."""
-        return True
+        """Return True if the cloud reported the device online."""
+        return (self.coordinator.data or {}).get("online", True)
 
-    # ── State (Proxied from Coordinator/TuyaLocal in future) ──────
+    # ── State ──────────────────────────────────────────────────
 
     @property
     def activity(self) -> VacuumActivity:
-        """Return the current activity. We return IDLE as we are a proxy."""
-        return VacuumActivity.IDLE
+        """Return the current activity from cloud status."""
+        st = (self.coordinator.data or {}).get("status", "unknown")
+        return STATUS_MAP.get(st, VacuumActivity.IDLE)
 
     @property
     def battery_level(self) -> int | None:
-        """Return the battery level from TuyaLocal if available."""
-        return None
+        """Return the battery level from cloud status."""
+        return (self.coordinator.data or {}).get("battery")
 
     @property
     def fan_speed(self) -> str | None:
         """Return the fan speed."""
-        return None
+        return (self.coordinator.data or {}).get("suction")
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return extra attributes."""
+        """Return extra attributes from cloud status."""
+        d = self.coordinator.data or {}
         return {
+            "mode":       d.get("mode"),
+            "water":      d.get("water"),
+            "clean_time": d.get("clean_time"),
+            "clean_area": d.get("clean_area"),
+            "fault_code": d.get("fault"),
             "integration": "Companion for TuyaLocal",
-            "note": "Use TuyaLocal entity for passive monitoring"
         }
 
     # ── Basic services ─────────────────────────────────────────

@@ -68,7 +68,21 @@ class TuyaVacuumOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
+            # Reconstruct the rooms dictionary
+            rooms = {
+                "0": user_input.pop("room_0_name"),
+                "1": user_input.pop("room_1_name"),
+                "2": user_input.pop("room_2_name"),
+                "3": user_input.pop("room_3_name"),
+                "4": user_input.pop("room_4_name"),
+            }
+            # Add rooms back to user_input
+            user_input["rooms"] = rooms
             return self.async_create_entry(title="", data=user_input)
+        
+        # Get existing rooms or defaults
+        rooms = self._entry.data.get("rooms", {})
+        
         schema = vol.Schema({
             vol.Optional(CONF_CLIENT_ID,
                 default=self._entry.data.get(CONF_CLIENT_ID, "")): str,
@@ -77,5 +91,12 @@ class TuyaVacuumOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_REGION,
                 default=self._entry.data.get(CONF_REGION, "eu")):
                 vol.In(["eu", "us", "cn", "in"]),
+            
+            # Room name mapping (ID 0-4)
+            vol.Optional("room_0_name", default=rooms.get("0", "Living Room")): str,
+            vol.Optional("room_1_name", default=rooms.get("1", "Kitchen")): str,
+            vol.Optional("room_2_name", default=rooms.get("2", "Bedroom")): str,
+            vol.Optional("room_3_name", default=rooms.get("3", "Bathroom")): str,
+            vol.Optional("room_4_name", default=rooms.get("4", "Hallway")): str,
         })
         return self.async_show_form(step_id="init", data_schema=schema)

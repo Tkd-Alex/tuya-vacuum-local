@@ -250,9 +250,19 @@ def _build_room(room_id, suction, water, passes, templates) -> bytes:
     tpl = templates.get(str(room_id))
     if tpl:
         frame = bytearray(bytes.fromhex(tpl.replace(" ","")))
-        if passes and passes != 1: frame[11] = passes
-        if suction is not None:    frame[12] = suction
-        if water   is not None:    frame[13] = water
+        # Search for structural marker [0x05, 0x00] to find settings offset
+        # Block is typically: [room_id] [05] [00] [b1] [b2] [passes] [suction] [water] [01] [00]
+        try:
+            idx = frame.index(b"\x05\x00", 3) # start search after header
+            if passes and passes != 1: frame[idx+4] = passes
+            if suction is not None:    frame[idx+5] = suction
+            if water   is not None:    frame[idx+6] = water
+        except (ValueError, IndexError):
+            # Fallback to hardcoded offsets if marker not found
+            if passes and passes != 1: frame[11] = passes
+            if suction is not None:    frame[12] = suction
+            if water   is not None:    frame[13] = water
+        
         frame[-1] = _checksum(frame[3:-1])
         return bytes(frame)
     # Fallback generic frame

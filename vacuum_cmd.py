@@ -135,10 +135,18 @@ def _build_room_frame(room_id: int, suction=None, water=None, passes=1) -> bytes
             "Capture it with vacuum_listener.py while using the app. See PROTOCOL.md."
         )
     frame = bytearray(bytes.fromhex(tpl_hex.replace(" ", "")))
-    # byte[11]=passes  byte[12]=suction  byte[13]=water
-    if passes  != 1:         frame[11] = passes
-    if suction is not None:  frame[12] = suction
-    if water   is not None:  frame[13] = water
+    
+    # Dynamic offset search
+    try:
+        idx = frame.index(b"\x05\x00", 3)
+        if passes != 1:          frame[idx+4] = passes
+        if suction is not None:  frame[idx+5] = suction
+        if water   is not None:  frame[idx+6] = water
+    except (ValueError, IndexError):
+        if passes  != 1:         frame[11] = passes
+        if suction is not None:  frame[12] = suction
+        if water   is not None:  frame[13] = water
+
     frame[-1] = _checksum(frame[3:-1])
     return bytes(frame)
 

@@ -31,3 +31,7 @@ build/
 *.swp
 .DS_Store
 debug_map.py
+debug_map.png
+check_cloud.py
+configuration.yaml
+dashboard.yaml

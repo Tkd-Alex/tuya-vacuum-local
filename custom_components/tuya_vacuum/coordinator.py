@@ -124,17 +124,43 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             "fault":      dps.get(str(DP_FAULT), 0),
         }
 
-    # ── Vacuum commands (one-shot) ────────────────────────────────
+    # ── Stateless & Persistent connections ────────────────────────
+
+    def _get_device(self, persistent: bool = False):
+        """Create a device instance."""
+        d = tinytuya.Device(
+            self._config[CONF_DEVICE_ID],
+            self._config[CONF_DEVICE_IP],
+            self._config[CONF_DEVICE_KEY],
+            version=float(self._config.get(CONF_DEVICE_VERSION, 3.3)),
+        )
+        d.set_socketTimeout(5)
+        d.set_socketPersistent(persistent)
+        return d
 
     def send_dp(self, dp: int, value: Any) -> None:
         """Connect, send DP, and disconnect."""
-        d = self._get_one_shot_device()
+        d = self._get_device(persistent=False)
         d.set_value(dp, value)
 
     def send_multiple(self, values: dict) -> None:
         """Connect, send multiple DPs, and disconnect."""
-        d = self._get_one_shot_device()
+        d = self._get_device(persistent=False)
         d.set_multiple_values(values)
+
+    def send_sequence(self, sequence: list) -> None:
+        """Execute a sequence of commands using a single persistent connection (BUG-09)."""
+        d = self._get_device(persistent=True)
+        try:
+            for item in sequence:
+                if isinstance(item, dict):
+                    d.set_multiple_values(item)
+                else:
+                    dp, val = item
+                    d.set_value(dp, val)
+                time.sleep(0.3)
+        finally:
+            d.close()
 
     def send_dp15(self, b64: str) -> None:
         """Connect, send raw DP15, and disconnect."""

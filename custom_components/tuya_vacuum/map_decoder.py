@@ -156,8 +156,7 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
             except Exception: continue
 
         # Dock
-        upc = res*2
-        dc,dr = int(ox/upc), int(oy/upc)
+        dc,dr = int(ox), int(oy)
         if 0<=dc<W and 0<=dr<H:
             dx,dy,R = dc*scale+scale//2, dr*scale+scale//2, 12
             draw.ellipse([dx-R,dy-R,dx+R,dy+R], fill=(50,200,80), outline=(20,140,40), width=2)

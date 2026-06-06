@@ -16,26 +16,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register custom services
     async def handle_clean_room(call):
         room_name = call.data.get("room_name")
-        suction = call.data.get("suction")
-        water = call.data.get("water")
+        suction   = call.data.get("suction")
+        water     = call.data.get("water")
         
         # Find room ID by name
         rooms = entry.data.get("rooms", {})
         room_id = next((rid for rid, name in rooms.items() if name == room_name), None)
+        
         if room_id is not None:
-            params = {"rooms": [int(room_id)]}
-            if suction: params["suction"] = [suction]
-            if water:   params["water"]   = [water]
+            from homeassistant.helpers import entity_registry as er
+            registry = er.async_get(hass)
+            # Find the vacuum entity belonging to this config entry
+            entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+            vacuum_entity = next((e for e in entities if e.domain == "vacuum"), None)
 
-            for entity_id in hass.states.async_entity_ids("vacuum"):
-                state = hass.states.get(entity_id)
-                if state and state.attributes.get("unique_id") == f"{entry.entry_id}_vacuum":
-                    await hass.services.async_call("vacuum", "send_command", {
-                        "entity_id": entity_id,
-                        "command": "clean_rooms",
-                        "params": params
-                    })
-                    break
+            if vacuum_entity:
+                params = {"rooms": [int(room_id)]}
+                if suction: params["suction"] = [suction]
+                if water:   params["water"]   = [water]
+
+                await hass.services.async_call("vacuum", "send_command", {
+                    "entity_id": vacuum_entity.entity_id,
+                    "command": "clean_rooms",
+                    "params": params
+                })
+            else:
+                _LOGGER.error("Could not find vacuum entity for entry %s", entry.entry_id)
 
     async def handle_refresh_map(call):
         coordinator = hass.data[DOMAIN][entry.entry_id]

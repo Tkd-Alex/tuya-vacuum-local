@@ -16,23 +16,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register custom services
     async def handle_clean_room(call):
         room_name = call.data.get("room_name")
+        suction = call.data.get("suction")
+        water = call.data.get("water")
+        
         # Find room ID by name
         rooms = entry.data.get("rooms", {})
         room_id = next((rid for rid, name in rooms.items() if name == room_name), None)
         if room_id is not None:
-            # Get the vacuum entity for this entry
-            # (Simplification: assuming one vacuum per entry)
+            params = {"rooms": [int(room_id)]}
+            if suction: params["suction"] = [suction]
+            if water:   params["water"]   = [water]
+
             for entity_id in hass.states.async_entity_ids("vacuum"):
                 state = hass.states.get(entity_id)
                 if state and state.attributes.get("unique_id") == f"{entry.entry_id}_vacuum":
                     await hass.services.async_call("vacuum", "send_command", {
                         "entity_id": entity_id,
                         "command": "clean_rooms",
-                        "params": {"rooms": [int(room_id)]}
+                        "params": params
                     })
                     break
 
+    async def handle_refresh_map(call):
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        await hass.async_add_executor_job(coordinator.update_map)
+
     hass.services.async_register(DOMAIN, "clean_room_by_name", handle_clean_room)
+    hass.services.async_register(DOMAIN, "refresh_map", handle_refresh_map)
+
+    # Initial map fetch to avoid 500 error on startup
+    hass.async_add_executor_job(coordinator.update_map)
 
     return True
 

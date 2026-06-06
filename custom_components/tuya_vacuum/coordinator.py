@@ -43,16 +43,44 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         self._config       = config
         self._map_image: bytes | None = None
         self._token_cache  = {"token": None, "expiry": 0.0}
+        self._last_map_refresh = 0.0
+        self._last_status      = "unknown"
 
     # ── Cloud-based polling ───────────────────────────────────────
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch status from Tuya Cloud API."""
+        """Fetch status from Tuya Cloud API and handle adaptive map refresh."""
         try:
-            return await self.hass.async_add_executor_job(self._fetch_cloud_status)
+            status_data = await self.hass.async_add_executor_job(self._fetch_cloud_status)
+            
+            # Adaptive Map Refresh logic
+            current_status = status_data.get("status", "unknown")
+            now = time.time()
+            
+            should_refresh_map = False
+            
+            # 1. Refresh every 60s if cleaning or returning
+            if current_status in ["cleaning", "returning", "smart", "zone_clean", "selectroom"]:
+                if now - self._last_map_refresh > 60:
+                    should_refresh_map = True
+            
+            # 2. Refresh immediately when robot finishes cleaning and docks
+            if current_status in ["charging", "charge_done", "standby"] and self._last_status in ["cleaning", "returning"]:
+                _LOGGER.info("Cleaning finished, triggering final map refresh")
+                should_refresh_map = True
+                
+            if should_refresh_map:
+                # Map rendering is heavy, run in executor
+                img = await self.hass.async_add_executor_job(self.fetch_and_render_map)
+                if img:
+                    self._map_image = img
+                    self._last_map_refresh = now
+            
+            self._last_status = current_status
+            return status_data
+            
         except Exception as err:
             _LOGGER.error("Cloud status update failed: %s", err)
-            # Return empty or old data on failure to keep entities alive
             return self.data or {}
 
     def _fetch_cloud_status(self) -> dict[str, Any]:

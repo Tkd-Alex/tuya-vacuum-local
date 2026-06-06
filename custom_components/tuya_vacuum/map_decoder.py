@@ -62,12 +62,16 @@ ROOM_COLORS = [
 ]
 CELL_TO_ROOM = {v: i for i, v in enumerate(ROOM_CELLS)}
 
+# Create a fast lookup table for all 256 possible cell values
+_COLOR_LUT = [(205, 200, 195)] * 256
+for i in range(256):
+    if i == 0xFF: _COLOR_LUT[i] = (245, 245, 245)
+    elif i == 0xF9: _COLOR_LUT[i] = (80,  80,  80)
+    elif i == 0xF4: _COLOR_LUT[i] = (215, 222, 230)
+    elif i in CELL_TO_ROOM: _COLOR_LUT[i] = ROOM_COLORS[CELL_TO_ROOM[i]]
+
 def _colour(v):
-    if v == 0xFF: return (245, 245, 245)
-    if v == 0xF9: return (80,  80,  80)
-    if v == 0xF4: return (215, 222, 230)
-    if v in CELL_TO_ROOM: return ROOM_COLORS[CELL_TO_ROOM[v]]
-    return (205, 200, 195)
+    return _COLOR_LUT[v] if v < 256 else (205, 200, 195)
 
 def _shrink(v): return v - 65536 if v > 32767 else v
 

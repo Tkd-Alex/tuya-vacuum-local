@@ -5,7 +5,9 @@ devices.json
 tinytuya.json
 tuya-raw.json
 
-# Downloaded map files
+# Logs and temporary files
+*.log
+home-assistant.log*
 *.bin
 *.txt
 map_*.png

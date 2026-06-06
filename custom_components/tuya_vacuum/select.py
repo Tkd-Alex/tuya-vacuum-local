@@ -41,14 +41,19 @@ class TuyaVacuumPresetSelect(CoordinatorEntity, SelectEntity):
         self._attr_current_option = "Normal"
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
+        """Change the selected option and apply to robot."""
         self._attr_current_option = option
         self.async_write_ha_state()
         
-        # When a preset is selected, we could optionally update the robot immediately
-        # or just leave it for the next 'start' command. 
-        # For now, let's just log it.
         settings = self._PRESETS.get(option)
         if settings:
-            # Optionally send global DPs for suction/water
-            pass
+            # Send global suction and water DPs
+            suction_map = {"gentle": 1, "normal": 2, "strong": 3, "strong_plus": 4}
+            water_map   = {"closed": 0, "low": 1, "middle": 2, "high": 3}
+            
+            suc_val = suction_map.get(settings["suction"])
+            wat_val = water_map.get(settings["water"])
+            
+            await self.hass.async_add_executor_job(
+                self.coordinator.send_multiple, {9: suc_val, 10: wat_val}
+            )

@@ -5,6 +5,9 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import TuyaVacuumCoordinator
 
+from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.http import StaticPathConfig
+
 PLATFORMS = ["vacuum", "image", "sensor", "select"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -12,6 +15,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Find the vacuum entity to pass to the panel
+    from homeassistant.helpers import entity_registry as er
+    registry = er.async_get(hass)
+    entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+    vacuum_entity = next((e for e in entities if e.domain == "vacuum"), None)
+    vacuum_entity_id = vacuum_entity.entity_id if vacuum_entity else None
+
+    # Register static path for the panel
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(
+            "/tuya_vacuum_panel",
+            hass.config.path("custom_components/tuya_vacuum/panel"),
+            cache_headers=False,
+        )
+    ])
+
+    # Register the panel in the sidebar
+    if vacuum_entity_id:
+        rooms = entry.options.get("rooms", entry.data.get("rooms", {}))
+        async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title="Vacuum",
+            sidebar_icon="mdi:robot-vacuum",
+            frontend_url_path="tuya-vacuum",
+            config={
+                "_panel_custom": {
+                    "name": "vacuum-panel",
+                    "module_url": "/tuya_vacuum_panel/vacuum-panel.js",
+                },
+                "entity_id": vacuum_entity_id,
+                "rooms": rooms,
+                "map_entity": f"image.{entry.entry_id}_map", # using unique_id pattern
+            },
+            require_admin=False,
+        )
 
     # Register custom services
     async def handle_clean_room(call):

@@ -81,14 +81,35 @@ python vacuum_map_decode.py map_layout_ID.bin --path map_path_ID.bin
 
 ## Installation
 
-### Option A — HACS (recommended)
-
+### Option A — HACS (Recommended)
 1. In HA: **HACS → Integrations → ⋮ → Custom repositories**
 2. Add `https://github.com/Tkd-Alex/tuya-vacuum-local` as **Integration**
 3. Install **Tuya Vacuum Local**
 4. Restart HA
 5. **Settings → Devices & Services → Add Integration → Tuya Vacuum Local**
 6. Enter your device credentials (see Setup below)
+
+## Dashboard & UI
+
+This integration provides two out-of-the-box UI options to control your vacuum without writing any YAML:
+
+### 🟢 Option 1 — Dedicated Panel (Zero Setup)
+Upon configuration, a new "Vacuum" item will automatically appear in your Home Assistant sidebar.
+This provides a full-screen, app-like experience where you can see the live map, select rooms, adjust suction/water, and start cleaning.
+
+### 🔧 Option 2 — Lovelace Card (For your Dashboards)
+If you want to embed the vacuum controls inside an existing Home Assistant Area or Dashboard (without the map):
+
+1. Go to **Settings → Dashboards → 3 dots menu → Resources → Add Resource**
+   - URL: `/tuya_vacuum_static/vacuum-card.js`
+   - Resource type: `JavaScript Module`
+2. Go to your Dashboard, Edit, and add a Custom Card:
+   ```yaml
+   type: custom:vacuum-card
+   entity: vacuum.tuya_vacuum_xxx # Replace with your actual entity ID
+   ```
+   *Note: If you configured your rooms via the integration UI, they will automatically appear here.*
+
 
 ### Option B — Manual
 

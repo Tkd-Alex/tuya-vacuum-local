@@ -29,6 +29,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "/tuya_vacuum_panel",
             hass.config.path("custom_components/tuya_vacuum/panel"),
             cache_headers=False,
+        ),
+        StaticPathConfig(
+            "/tuya_vacuum_static",
+            hass.config.path("custom_components/tuya_vacuum/www"),
+            cache_headers=False,
         )
     ])
 

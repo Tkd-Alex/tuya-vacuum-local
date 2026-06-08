@@ -93,12 +93,13 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
     def extra_state_attributes(self) -> dict:
         """Return extra attributes from cloud status."""
         d = self.coordinator.data or {}
-        rooms = self._entry.data.get("rooms", {})
+        rooms = self._entry.options.get("rooms", self._entry.data.get("rooms", {}))
         return {
             "mode":       d.get("mode"),
             "water":      d.get("water"),
             "clean_time": d.get("clean_time"),
             "clean_area": d.get("clean_area"),
+            "current_room": d.get("current_room"),
             "fault_code": d.get("fault"),
             "rooms":      rooms,
             "integration": "Companion for TuyaLocal",

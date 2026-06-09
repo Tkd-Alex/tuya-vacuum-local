@@ -22,6 +22,7 @@ class TuyaVacuumMapImage(ImageEntity):
     def __init__(self, coordinator: TuyaVacuumCoordinator, entry: ConfigEntry):
         super().__init__(coordinator.hass)
         self._coordinator  = coordinator
+        self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_map"
         self._image_last_updated = dt_util.utcnow()
 

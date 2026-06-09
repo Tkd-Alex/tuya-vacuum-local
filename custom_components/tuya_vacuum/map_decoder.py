@@ -63,15 +63,20 @@ ROOM_COLORS = [
 CELL_TO_ROOM = {v: i for i, v in enumerate(ROOM_CELLS)}
 
 # Create a fast lookup table for all 256 possible cell values
-_COLOR_LUT = [(205, 200, 195)] * 256
+# We use RGBA for transparency support
+_COLOR_LUT = [(205, 200, 195, 255)] * 256
 for i in range(256):
-    if i == 0xFF: _COLOR_LUT[i] = (245, 245, 245)
-    elif i == 0xF9: _COLOR_LUT[i] = (80,  80,  80)
-    elif i == 0xF4: _COLOR_LUT[i] = (215, 222, 230)
-    elif i in CELL_TO_ROOM: _COLOR_LUT[i] = ROOM_COLORS[CELL_TO_ROOM[i]]
+    # 0xFF is the background (outside apartment). Make it fully transparent.
+    if i == 0xFF: _COLOR_LUT[i] = (245, 245, 245, 0)
+    # 0xF4 is explored free space. Make it semi-transparent or theme-friendly if needed.
+    elif i == 0xF9: _COLOR_LUT[i] = (80,  80,  80, 255)
+    elif i == 0xF4: _COLOR_LUT[i] = (215, 222, 230, 255)
+    elif i in CELL_TO_ROOM: 
+        r, g, b = ROOM_COLORS[CELL_TO_ROOM[i]]
+        _COLOR_LUT[i] = (r, g, b, 255)
 
 def _colour(v):
-    return _COLOR_LUT[v] if v < 256 else (205, 200, 195)
+    return _COLOR_LUT[v] if v < 256 else (205, 200, 195, 255)
 
 def _shrink(v): return v - 65536 if v > 32767 else v
 
@@ -144,7 +149,7 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
         room_names   = _room_names(room_section)
 
         # Create image
-        img = Image.new("RGB", (W, H))
+        img = Image.new("RGBA", (W, H))
         pixels = [_colour(v) for v in grid]
         img.putdata(pixels)
         

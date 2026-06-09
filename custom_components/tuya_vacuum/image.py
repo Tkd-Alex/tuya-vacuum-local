@@ -26,6 +26,14 @@ class TuyaVacuumMapImage(ImageEntity):
         self._image_last_updated = dt_util.utcnow()
 
     @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": self._entry.title or "Tuya Vacuum",
+            "manufacturer": "Tuya",
+        }
+
+    @property
     def extra_state_attributes(self) -> dict:
         """Return map calibration and room coordinates for UI extensions."""
         return self._coordinator.map_data or {}

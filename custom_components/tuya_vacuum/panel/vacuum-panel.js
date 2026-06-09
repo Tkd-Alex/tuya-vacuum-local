@@ -31,8 +31,15 @@ class VacuumPanel extends HTMLElement {
     
     if (isCleaning && !this._mapTimer) {
       this._mapTimer = setInterval(() => {
-        const img = this.shadowRoot.querySelector("#vacuum-map");
-        if (img) img.src = this._getMapUrl() + `&t=${Date.now()}`;
+        const url = this._getMapUrl();
+        if (url) {
+          const newImg = new Image();
+          newImg.onload = () => {
+            const img = this.shadowRoot.querySelector("#vacuum-map");
+            if (img) img.src = newImg.src;
+          };
+          newImg.src = url + `&t=${Date.now()}`;
+        }
       }, 30000);
     } else if (!isCleaning && this._mapTimer) {
       clearInterval(this._mapTimer);
@@ -90,25 +97,34 @@ class VacuumPanel extends HTMLElement {
     const vacuumState = this._hass.states[this._config.entity_id];
     if (!vacuumState) return;
 
-    const battery = this._hass.states["sensor.battery"]?.state || vacuumState.attributes.battery_level || "?";
+    const battery = vacuumState.attributes.battery_level ?? "?";
     const status = vacuumState.state;
-    const rooms = this._config.rooms || vacuumState.attributes.rooms || {};
+    
+    // Normalize rooms into an array of {id, name}
+    let roomsData = this._config.rooms || vacuumState.attributes.rooms;
+    let roomsArray = [];
+    if (Array.isArray(roomsData)) {
+        roomsArray = roomsData; 
+    } else if (typeof roomsData === 'object' && roomsData !== null) {
+        roomsArray = Object.entries(roomsData).map(([id, name]) => ({id: id, name: name}));
+    }
+
     const mapUrl = this._getMapUrl();
 
     const suctionLabels = {1: "Eco", 2: "Norm", 3: "Max", 4: "Turbo"};
     const waterLabels = {0: "Off", 1: "Low", 2: "Med", 3: "High"};
 
-    let roomsHtml = Object.entries(rooms).map(([id, name]) => {
-      const selected = this._selectedRooms.has(id);
+    let roomsHtml = roomsArray.map(room => {
+      const selected = this._selectedRooms.has(room.id);
       let details = "";
-      if (selected && this._roomSettings[id]) {
-         const s = this._roomSettings[id].suction;
-         const w = this._roomSettings[id].water;
+      if (selected && this._roomSettings[room.id]) {
+         const s = this._roomSettings[room.id].suction;
+         const w = this._roomSettings[room.id].water;
          details = `<div class="room-details">💨${suctionLabels[s]} 💧${waterLabels[w]}</div>`;
       }
       return `
-        <button class="room-btn ${selected ? 'selected' : ''}" data-id="${id}">
-            <div>${name} ${selected ? '✓' : ''}</div>
+        <button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}">
+            <div>${room.name} ${selected ? '✓' : ''}</div>
             ${details}
         </button>
       `;

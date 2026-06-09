@@ -72,6 +72,15 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         self._entry = entry
 
     @property
+    def device_info(self):
+        """Return device registry information for this entity."""
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": self._entry.title or "Tuya Vacuum",
+            "manufacturer": "Tuya",
+        }
+
+    @property
     def available(self) -> bool:
         """Return True if the target TuyaLocal entity is available, otherwise assume True."""
         tuya_local_id = self._entry.options.get("tuya_local_entity")

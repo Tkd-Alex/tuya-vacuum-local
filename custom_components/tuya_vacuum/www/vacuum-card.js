@@ -78,7 +78,7 @@ class VacuumCard extends HTMLElement {
       return;
     }
 
-    const battery = this._hass.states["sensor.battery"]?.state || stateObj.attributes.battery_level || "?";
+    const battery = stateObj.attributes.battery_level ?? "?";
     const status = stateObj.state;
     
     // Check if rooms are provided via card config, otherwise fallback to entity attributes

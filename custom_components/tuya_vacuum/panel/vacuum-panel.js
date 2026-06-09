@@ -33,12 +33,13 @@ class VacuumPanel extends HTMLElement {
       this._mapTimer = setInterval(() => {
         const url = this._getMapUrl();
         if (url) {
+          const separator = url.includes("?") ? "&" : "?";
           const newImg = new Image();
           newImg.onload = () => {
             const img = this.shadowRoot.querySelector("#vacuum-map");
             if (img) img.src = newImg.src;
           };
-          newImg.src = url + `&t=${Date.now()}`;
+          newImg.src = url + `${separator}t=${Date.now()}`;
         }
       }, 30000);
     } else if (!isCleaning && this._mapTimer) {
@@ -252,7 +253,7 @@ class VacuumPanel extends HTMLElement {
           <span>🔋 ${battery}% [${status}]</span>
         </div>
         <div class="map-container">
-          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}&t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
+          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
         </div>
         <div class="controls">
           

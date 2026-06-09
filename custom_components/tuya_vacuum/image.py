@@ -25,6 +25,11 @@ class TuyaVacuumMapImage(ImageEntity):
         self._attr_unique_id = f"{entry.entry_id}_map"
         self._image_last_updated = dt_util.utcnow()
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return map calibration and room coordinates for UI extensions."""
+        return self._coordinator.map_data or {}
+
     async def async_image(self) -> bytes | None:
         return self._coordinator.map_image
 

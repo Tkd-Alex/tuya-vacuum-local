@@ -71,10 +71,13 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
                 
             if should_refresh_map:
                 # Map rendering is heavy, run in executor
-                img = await self.hass.async_add_executor_job(self.fetch_and_render_map)
-                if img:
-                    self._map_image = img
-                    self._last_map_refresh = now
+                result = await self.hass.async_add_executor_job(self.fetch_and_render_map)
+                if result:
+                    img, map_data = result
+                    if img:
+                        self._map_image = img
+                        self._map_data = map_data
+                        self._last_map_refresh = now
             
             self._last_status = current_status
             return status_data
@@ -196,12 +199,12 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         self._token_cache["expiry"] = time.time() + r["result"]["expire_time"]
         return self._token_cache["token"]
 
-    def fetch_and_render_map(self) -> bytes | None:
+    def fetch_and_render_map(self) -> tuple[bytes | None, dict | None]:
         """Download latest map from Tuya Cloud and render as PNG bytes."""
         import requests as req
         if not HAS_PIL:
             _LOGGER.warning("Pillow not installed — map rendering disabled")
-            return None
+            return None, None
 
         cfg    = self._config
         did    = cfg[CONF_DEVICE_ID]
@@ -246,22 +249,28 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
 
         return self._render_map(layout_raw, path_raw)
 
-    def _render_map(self, layout_raw: bytes, path_raw: bytes | None) -> bytes | None:
-        """Decode LZ4 map and render PNG — returns PNG bytes."""
+    def _render_map(self, layout_raw: bytes, path_raw: bytes | None) -> tuple[bytes | None, dict | None]:
+        """Decode LZ4 map and render PNG — returns (PNG bytes, map_data dict)."""
         try:
             from .map_decoder import decode_and_render
             return decode_and_render(layout_raw, path_raw)
         except Exception as e:
             _LOGGER.error("Map render error: %s", e)
-            return None
+            return None, None
 
     @property
     def map_image(self) -> bytes | None:
         return self._map_image
 
+    @property
+    def map_data(self) -> dict | None:
+        """Return map calibration and room data."""
+        return getattr(self, "_map_data", {})
+
     def update_map(self) -> None:
         """Called after cleaning ends — fetch and cache the new map."""
-        img = self.fetch_and_render_map()
+        img, map_data = self.fetch_and_render_map() or (None, None)
         if img:
             self._map_image = img
+            self._map_data = map_data
             _LOGGER.info("Map updated (%d bytes)", len(img))

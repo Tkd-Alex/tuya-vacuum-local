@@ -110,6 +110,47 @@ If you want to embed the vacuum controls inside an existing Home Assistant Area 
    ```
    *Note: If you configured your rooms via the integration UI, they will automatically appear here.*
 
+### 🗺️ Option 3 — Pro Mode: Interactive Map Card
+If you want the ultimate, app-like experience directly in your Lovelace dashboard, this integration is 100% compatible with the community-standard `lovelace-xiaomi-vacuum-map-card`. 
+
+1. Install [Xiaomi Vacuum Map Card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card) via HACS Frontend.
+2. The integration automatically exposes map calibration and room coordinates. Use this exact YAML configuration (replace `vacuum.tuya_vacuum_xxx` and `image.tuya_vacuum_xxx_map` with your actual entity IDs):
+
+```yaml
+type: custom:xiaomi-vacuum-map-card
+entity: vacuum.tuya_vacuum_xxx
+map_source:
+  camera: image.tuya_vacuum_xxx_map
+calibration_source:
+  camera: true
+map_modes:
+  - template: vacuum_clean_segment
+    service_call_schema:
+      service: vacuum.send_command
+      service_data:
+        entity_id: "[[entity_id]]"
+        command: clean_rooms
+        params:
+          rooms: "[[selection]]"
+  - template: vacuum_clean_zone
+    service_call_schema:
+      service: vacuum.send_command
+      service_data:
+        entity_id: "[[entity_id]]"
+        command: clean_zone
+        params:
+          corners: "[[selection]]"
+  - template: vacuum_goto
+    service_call_schema:
+      service: vacuum.send_command
+      service_data:
+        entity_id: "[[entity_id]]"
+        command: clean_spot
+        params:
+          x: "[[point_x]]"
+          y: "[[point_y]]"
+```
+
 
 ### Option B — Manual
 

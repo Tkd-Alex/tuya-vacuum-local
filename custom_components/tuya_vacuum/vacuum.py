@@ -174,10 +174,10 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
 
     def _do_clean_rooms(self, params: dict) -> None:
         c  = self.coordinator
-        rooms    = params.get("rooms", [0,1,2,3,4])
-        suctions = _pad(params.get("suction"), len(rooms), None)
-        waters   = _pad(params.get("water"),   len(rooms), None)
-        passes   = _pad(params.get("passes"),  len(rooms), 1)
+        rooms    = [int(x) for x in params.get("rooms", [0,1,2,3,4])]
+        suctions = [_parse_int_or_none(x) for x in _pad(params.get("suction"), len(rooms), None)]
+        waters   = [_parse_int_or_none(x) for x in _pad(params.get("water"),   len(rooms), None)]
+        passes   = [_parse_int_or_none(x) or 1 for x in _pad(params.get("passes"),  len(rooms), 1)]
 
         room_templates = self._entry.data.get("room_templates", {})
         
@@ -214,31 +214,56 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         })
 
     def _do_zone(self, params: dict) -> None:
-        corners = params.get("corners", [])
-        if not corners:
+        raw_corners = params.get("corners", [])
+        if not raw_corners:
             return
+            
         suc  = params.get("suction", 2)
         wat  = params.get("water",   0)
         pas  = params.get("passes",  1)
         car  = params.get("carpet",  0)
-        zone = {"corners": corners, "suction": suc, "water": wat,
-                "passes": pas, "carpet": car}
-        bundle = _zone_bundle([zone])
+        
+        zones_config = []
+        
+        # Handle both our internal format [[(x,y), ...]] and Xiaomi Map Card format [[x1,y1,x2,y2], ...]
+        for z in raw_corners:
+            if len(z) == 4 and not isinstance(z[0], (list, tuple)):
+                # Xiaomi format: bounding box [x1, y1, x2, y2]
+                x1, y1, x2, y2 = z
+                corners = [(x1,y1), (x2,y1), (x2,y2), (x1,y2)]
+            else:
+                # Fallback / internal format
+                corners = [tuple(c) for c in z]
+                
+            zones_config.append({
+                "corners": corners, "suction": suc, "water": wat,
+                "passes": pas, "carpet": car
+            })
+
+        if not zones_config:
+            return
+
         c = self.coordinator
-        c.send_dp15(_SYNC);  time.sleep(0.4)
-        c.send_dp15(_b64(bundle));  time.sleep(0.4)
-        c.send_multiple({DP_POWER: True, DP_MODE: "zone"})
+        sequence = [
+            (DP_COMMAND_TRANS, _SYNC),
+            (DP_COMMAND_TRANS, _b64(_zone_bundle(zones_config))),
+            {DP_POWER: True, DP_MODE: "zone"}
+        ]
+        c.send_sequence(sequence)
 
     def _do_spot(self, params: dict) -> None:
-        x   = params.get("x", 0)
-        y   = params.get("y", 0)
+        x   = int(params.get("x", 0))
+        y   = int(params.get("y", 0))
         suc = params.get("suction", 2)
         wat = params.get("water",   0)
-        bundle = _spot_bundle(x, y, suc, wat)
+        
         c = self.coordinator
-        c.send_dp15(_SYNC);  time.sleep(0.4)
-        c.send_dp15(_b64(bundle));  time.sleep(0.4)
-        c.send_multiple({DP_POWER: True, DP_MODE: "pose"})
+        sequence = [
+            (DP_COMMAND_TRANS, _SYNC),
+            (DP_COMMAND_TRANS, _b64(_spot_bundle(x, y, suc, wat))),
+            {DP_POWER: True, DP_MODE: "pose"}
+        ]
+        c.send_sequence(sequence)
 
 
 # ── Frame helpers ─────────────────────────────────────────────────
@@ -248,6 +273,9 @@ def _aa(cmd: int, payload) -> bytes:
     data = bytes([cmd]+list(payload))
     return bytes([0xAA, 0x00, len(data)]) + data + bytes([_checksum(data)])
 def _b64(b: bytes) -> str: return base64.b64encode(b).decode()
+def _parse_int_or_none(v):
+    try: return int(v)
+    except (ValueError, TypeError): return None
 def _pad(val, n, default):
     if val is None: return [default]*n
     if isinstance(val, (int, str)): return [val]*n

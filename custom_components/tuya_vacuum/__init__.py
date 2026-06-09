@@ -16,12 +16,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Find the vacuum entity to pass to the panel
+    # Find the vacuum and image entities to pass to the panel
     from homeassistant.helpers import entity_registry as er
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
     vacuum_entity = next((e for e in entities if e.domain == "vacuum"), None)
+    image_entity = next((e for e in entities if e.domain == "image"), None)
     vacuum_entity_id = vacuum_entity.entity_id if vacuum_entity else None
+    image_entity_id = image_entity.entity_id if image_entity else None
 
     # Register static path for the panel
     await hass.http.async_register_static_paths([
@@ -53,7 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 },
                 "entity_id": vacuum_entity_id,
                 "rooms": rooms,
-                "map_entity": f"image.{entry.entry_id}_map", # using unique_id pattern
+                "map_entity": image_entity_id,
             },
             require_admin=False,
         )

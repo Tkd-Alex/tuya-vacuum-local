@@ -42,8 +42,9 @@ class VacuumPanel extends HTMLElement {
   _getMapUrl() {
     if (!this._hass || !this._config.map_entity) return "";
     const mapState = this._hass.states[this._config.map_entity];
-    if (mapState && mapState.attributes.access_token) {
-      return `/api/image_proxy/${mapState.entity_id}?token=${mapState.attributes.access_token}`;
+    if (mapState) {
+      const token = mapState.attributes.access_token;
+      return `/api/image_proxy/${mapState.entity_id}` + (token ? `?token=${token}` : "");
     }
     return "";
   }

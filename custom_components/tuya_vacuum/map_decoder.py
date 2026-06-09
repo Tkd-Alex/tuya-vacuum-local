@@ -105,11 +105,13 @@ def _error_img(msg: str, W: int = 512, H: int = 512) -> bytes:
     return buf.getvalue()
 
 def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
-                      scale: int = 4) -> bytes:
-    """Decode LZ4 map binary and return PNG as bytes."""
+                      scale: int = 4) -> tuple[bytes, dict]:
+    """Decode LZ4 map binary and return (PNG bytes, map_data dict)."""
+    map_data = {"calibration_points": [], "rooms": {}}
+    
     try:
         if not layout_raw or len(layout_raw) < 24:
-            return _error_img("Invalid map data (too short)")
+            return _error_img("Invalid map data (too short)"), map_data
 
         flds = [struct.unpack(">H", layout_raw[i:i+2])[0] for i in range(0, 24, 2)]
         W, H   = flds[2], flds[3]
@@ -119,13 +121,23 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
         clen   = flds[11]
 
         if W == 0 or H == 0 or clen == 0:
-            return _error_img(f"Invalid dimensions: {W}x{H}")
+            return _error_img(f"Invalid dimensions: {W}x{H}"), map_data
+
+        # Calculate calibration points for Xiaomi Map Card
+        # 200 units = 1 meter. Resolution is in cm/cell (usually 5).
+        # So units_per_cell = res * 2
+        upc = res * 2
+        map_data["calibration_points"] = [
+            {"map": {"x": 0,           "y": 0},           "vacuum": {"x": -ox,             "y": -oy}},
+            {"map": {"x": W * scale,   "y": 0},           "vacuum": {"x": (W * upc) - ox,  "y": -oy}},
+            {"map": {"x": 0,           "y": H * scale},   "vacuum": {"x": -ox,             "y": (H * upc) - oy}}
+        ]
 
         # Decompress
         try:
             dec = lz4_decompress(layout_raw[24:24+clen], uncompressed_size=total)
         except Exception as e:
-            return _error_img(f"Decompression failed: {e}")
+            return _error_img(f"Decompression failed: {e}"), map_data
 
         grid         = dec[:W*H]
         room_section = dec[W*H:]
@@ -152,6 +164,18 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
                 rows=[p[0] for p in pos]; cols=[p[1] for p in pos]
                 cr,cc = sum(rows)//len(rows), sum(cols)//len(cols)
                 px,py = cc*scale+scale//2, cr*scale+scale//2
+                
+                # Expose room center in robot coordinates
+                cx_robot = (cc * upc) - ox
+                cy_robot = (cr * upc) - oy
+                map_data["rooms"][str(idx)] = {
+                    "name": name, 
+                    "x": cx_robot, 
+                    "y": cy_robot,
+                    "pixel_x": px,
+                    "pixel_y": py
+                }
+
                 bb = font.getbbox(name); tw,th,pad = bb[2]-bb[0],bb[3]-bb[1],8
                 draw.rounded_rectangle(
                     [px-tw//2-pad,py-th//2-pad,px+tw//2+pad,py+th//2+pad],
@@ -174,8 +198,8 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
-        return buf.getvalue()
+        return buf.getvalue(), map_data
 
     except Exception as e:
         import traceback
-        return _error_img(f"Render error: {e}\n{traceback.format_exc()[:100]}")
+        return _error_img(f"Render error: {e}\n{traceback.format_exc()[:100]}"), map_data

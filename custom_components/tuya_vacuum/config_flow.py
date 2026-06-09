@@ -86,7 +86,7 @@ class TuyaVacuumOptionsFlow(config_entries.OptionsFlow):
         
         schema = vol.Schema({
             vol.Optional("tuya_local_entity", default=self._entry.options.get("tuya_local_entity", "")): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="vacuum")
+                selector.EntitySelectorConfig(domain="vacuum", integration="tuya_local")
             ),
             vol.Optional(CONF_CLIENT_ID,
                 default=self._entry.data.get(CONF_CLIENT_ID, "")): str,

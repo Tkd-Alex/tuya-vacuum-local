@@ -3,6 +3,7 @@ from __future__ import annotations
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 from .const import (
     DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_IP, CONF_DEVICE_KEY,
     CONF_DEVICE_VERSION, CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_REGION,
@@ -84,6 +85,9 @@ class TuyaVacuumOptionsFlow(config_entries.OptionsFlow):
         rooms = self._entry.data.get("rooms", {})
         
         schema = vol.Schema({
+            vol.Optional("tuya_local_entity", default=self._entry.options.get("tuya_local_entity", "")): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="vacuum")
+            ),
             vol.Optional(CONF_CLIENT_ID,
                 default=self._entry.data.get(CONF_CLIENT_ID, "")): str,
             vol.Optional(CONF_CLIENT_SECRET,

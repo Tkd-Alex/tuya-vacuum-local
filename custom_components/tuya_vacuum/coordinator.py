@@ -49,83 +49,8 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
     # ── Cloud-based polling ───────────────────────────────────────
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch status from Tuya Cloud API and handle adaptive map refresh."""
-        try:
-            status_data = await self.hass.async_add_executor_job(self._fetch_cloud_status)
-            
-            # Adaptive Map Refresh logic
-            current_status = status_data.get("status", "unknown")
-            now = time.time()
-            
-            should_refresh_map = False
-            
-            # 1. Refresh every 60s if cleaning or returning
-            if current_status in ["cleaning", "returning", "smart", "zone_clean", "selectroom"]:
-                if now - self._last_map_refresh > 60:
-                    should_refresh_map = True
-            
-            # 2. Refresh immediately when robot finishes cleaning and docks
-            if current_status in ["charging", "charge_done", "standby"] and self._last_status in ["cleaning", "returning"]:
-                _LOGGER.info("Cleaning finished, triggering final map refresh")
-                should_refresh_map = True
-                
-            if should_refresh_map:
-                # Map rendering is heavy, run in executor
-                result = await self.hass.async_add_executor_job(self.fetch_and_render_map)
-                if result:
-                    img, map_data = result
-                    if img:
-                        self._map_image = img
-                        self._map_data = map_data
-                        self._last_map_refresh = now
-            
-            self._last_status = current_status
-            return status_data
-            
-        except Exception as err:
-            _LOGGER.error("Cloud status update failed: %s", err)
-            return self.data or {}
-
-    def _fetch_cloud_status(self) -> dict[str, Any]:
-        """Call Tuya Cloud API to get device status."""
-        did    = self._config[CONF_DEVICE_ID]
-        token  = self._get_cloud_token()
-        region = self._config.get(CONF_REGION, "eu")
-        base   = REGIONS.get(region, REGIONS["eu"])
-        
-        path = f"/v1.0/devices/{did}/status"
-        r = req.get(base + path, headers=self._cloud_sign("GET", path, token), timeout=10).json()
-        
-        if not r.get("success"):
-            raise UpdateFailed(f"Tuya Cloud status error: {r}")
-
-        # Map DP list to friendly dictionary
-        status_list = r.get("result", [])
-        dps = {str(item["code"]): item["value"] for item in status_list}
-        
-        # Also try to get general device info (for name/online status)
-        path_info = f"/v1.0/devices/{did}"
-        r_info = req.get(base + path_info, headers=self._cloud_sign("GET", path_info, token), timeout=10).json()
-        online = r_info.get("result", {}).get("online", True)
-
-        return {
-            "online":     online,
-            "battery":    dps.get(str(DP_BATTERY), 0),
-            "status":     dps.get(str(DP_STATUS), "unknown"),
-            "mode":       dps.get(str(DP_MODE), "smart"),
-            "suction":    dps.get(str(DP_SUCTION), "normal"),
-            "water":      dps.get(str(DP_WATER), "closed"),
-            "clean_time": dps.get(str(DP_CLEAN_TIME), 0),
-            "clean_area": dps.get(str(DP_CLEAN_AREA), 0),
-            "total_area": dps.get(str(DP_TOTAL_AREA), 0),
-            "total_count": dps.get(str(DP_TOTAL_COUNT), 0),
-            "total_time": dps.get(str(DP_TOTAL_TIME), 0),
-            "edge_brush": dps.get(str(DP_EDGE_BRUSH), 0),
-            "roll_brush": dps.get(str(DP_ROLL_BRUSH), 0),
-            "filter":     dps.get(str(DP_FILTER), 0),
-            "dust_cloth": dps.get(str(DP_DUST_CLOTH), 0),
-            "fault":      dps.get(str(DP_FAULT), 0),
-        }
+        """Manual update or event-driven update for the map. Status polling is disabled in Companion mode."""
+        return {}
 
     # ── Stateless & Persistent connections ────────────────────────
 

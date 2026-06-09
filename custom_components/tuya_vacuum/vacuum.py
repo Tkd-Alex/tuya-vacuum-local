@@ -73,21 +73,50 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if the cloud reported the device online."""
-        return (self.coordinator.data or {}).get("online", True)
+        """Return True if the target TuyaLocal entity is available, otherwise assume True."""
+        tuya_local_id = self._entry.options.get("tuya_local_entity")
+        if tuya_local_id:
+            state = self.hass.states.get(tuya_local_id)
+            if state:
+                return state.state != "unavailable"
+        return True
 
     # ── State ──────────────────────────────────────────────────
 
+    def _get_target_state(self):
+        """Helper to get the state of the associated TuyaLocal entity."""
+        tuya_local_id = self._entry.options.get("tuya_local_entity")
+        if tuya_local_id:
+            return self.hass.states.get(tuya_local_id)
+        return None
+
     @property
     def activity(self) -> VacuumActivity:
-        """Return the current activity from cloud status."""
+        """Return the current activity, primarily from the TuyaLocal entity."""
+        target_state = self._get_target_state()
+        if target_state:
+            # Try to map TuyaLocal string state to VacuumActivity
+            st = target_state.state
+            if st in ["cleaning", "returning", "docked", "idle", "paused", "error"]:
+                # If TuyaLocal uses modern string states
+                try: return VacuumActivity(st)
+                except ValueError: pass
+
+            # Fallback to our internal map just in case
+            return STATUS_MAP.get(st, VacuumActivity.IDLE)
+
+        # Fallback to cloud data if no TuyaLocal entity is configured
         st = (self.coordinator.data or {}).get("status", "unknown")
         return STATUS_MAP.get(st, VacuumActivity.IDLE)
 
     @property
-    def fan_speed(self) -> str | None:
-        """Return the fan speed."""
-        return (self.coordinator.data or {}).get("suction")
+    def battery_level(self) -> int | None:
+        """Return the battery level from TuyaLocal (if available) or cloud status."""
+        target_state = self._get_target_state()
+        if target_state and "battery_level" in target_state.attributes:
+            return target_state.attributes["battery_level"]
+        return (self.coordinator.data or {}).get("battery")
+
 
     @property
     def extra_state_attributes(self) -> dict:

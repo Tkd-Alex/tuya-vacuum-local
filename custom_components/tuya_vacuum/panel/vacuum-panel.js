@@ -5,8 +5,9 @@ class VacuumPanel extends HTMLElement {
     this._hass = null;
     this._config = {};
     this._selectedRooms = new Set();
-    this._suction = 2;
-    this._water = 1;
+    this._roomSettings = {};
+    this._currentSuction = 2;
+    this._currentWater = 1;
     this._mapTimer = null;
   }
 
@@ -52,8 +53,13 @@ class VacuumPanel extends HTMLElement {
   _toggleRoom(id) {
     if (this._selectedRooms.has(id)) {
       this._selectedRooms.delete(id);
+      delete this._roomSettings[id];
     } else {
       this._selectedRooms.add(id);
+      this._roomSettings[id] = {
+        suction: this._currentSuction,
+        water: this._currentWater
+      };
     }
     this._render();
   }
@@ -66,8 +72,8 @@ class VacuumPanel extends HTMLElement {
       command: "clean_rooms",
       params: {
         rooms: rooms.map(Number),
-        suction: rooms.map(() => this._suction),
-        water: rooms.map(() => this._water),
+        suction: rooms.map(id => this._roomSettings[id]?.suction || 2),
+        water: rooms.map(id => this._roomSettings[id]?.water || 0),
       }
     });
   }
@@ -89,9 +95,23 @@ class VacuumPanel extends HTMLElement {
     const rooms = this._config.rooms || vacuumState.attributes.rooms || {};
     const mapUrl = this._getMapUrl();
 
+    const suctionLabels = {1: "Eco", 2: "Norm", 3: "Max", 4: "Turbo"};
+    const waterLabels = {0: "Off", 1: "Low", 2: "Med", 3: "High"};
+
     let roomsHtml = Object.entries(rooms).map(([id, name]) => {
       const selected = this._selectedRooms.has(id);
-      return `<button class="room-btn ${selected ? 'selected' : ''}" data-id="${id}">${name} ${selected ? '✓' : ''}</button>`;
+      let details = "";
+      if (selected && this._roomSettings[id]) {
+         const s = this._roomSettings[id].suction;
+         const w = this._roomSettings[id].water;
+         details = `<div class="room-details">💨${suctionLabels[s]} 💧${waterLabels[w]}</div>`;
+      }
+      return `
+        <button class="room-btn ${selected ? 'selected' : ''}" data-id="${id}">
+            <div>${name} ${selected ? '✓' : ''}</div>
+            ${details}
+        </button>
+      `;
     }).join("");
 
     this.shadowRoot.innerHTML = `
@@ -150,17 +170,28 @@ class VacuumPanel extends HTMLElement {
           padding: 8px 16px;
           border: 1px solid var(--divider-color, #ccc);
           background: var(--secondary-background-color, #f9f9f9);
-          border-radius: 20px;
+          border-radius: 16px;
           cursor: pointer;
           color: var(--primary-text-color, #333);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
         .room-btn.selected {
           background: var(--primary-color, #03a9f4);
           color: white;
           border-color: var(--primary-color, #03a9f4);
         }
+        .room-details {
+          font-size: 0.75em;
+          margin-top: 4px;
+          opacity: 0.9;
+        }
         .sliders {
           margin-bottom: 16px;
+          background: var(--secondary-background-color, #f9f9f9);
+          padding: 12px;
+          border-radius: 8px;
         }
         .slider-row {
           display: flex;
@@ -168,7 +199,8 @@ class VacuumPanel extends HTMLElement {
           margin-bottom: 8px;
         }
         .slider-row span {
-          width: 100px;
+          width: 80px;
+          font-size: 0.9em;
         }
         .slider-row input {
           flex-grow: 1;
@@ -185,10 +217,18 @@ class VacuumPanel extends HTMLElement {
           cursor: pointer;
           font-weight: bold;
           flex-grow: 1;
+          color: white;
+          text-transform: uppercase;
         }
-        .btn-start { background: #4caf50; color: white; }
-        .btn-pause { background: #ff9800; color: white; }
-        .btn-dock { background: #2196f3; color: white; }
+        .btn-start { background: #4caf50; }
+        .btn-pause { background: #ff9800; }
+        .btn-dock { background: #2196f3; }
+        .help-text {
+          font-size: 0.85em;
+          color: var(--secondary-text-color, #666);
+          margin-bottom: 8px;
+          text-align: center;
+        }
       </style>
       <div class="container">
         <div class="header">
@@ -199,23 +239,27 @@ class VacuumPanel extends HTMLElement {
           ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}&t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
         </div>
         <div class="controls">
-          <h3>Rooms</h3>
-          <div class="rooms">
-            ${roomsHtml}
-          </div>
+          
           <div class="sliders">
+            <div class="help-text">1. Set power & water, then click a room</div>
             <div class="slider-row">
-              <span>Suction: ${this._suction}</span>
-              <input type="range" id="suction" min="1" max="4" value="${this._suction}">
+              <span>Suction: ${this._currentSuction}</span>
+              <input type="range" id="suction" min="1" max="4" value="${this._currentSuction}">
             </div>
             <div class="slider-row">
-              <span>Water: ${this._water}</span>
-              <input type="range" id="water" min="0" max="3" value="${this._water}">
+              <span>Water: ${this._currentWater}</span>
+              <input type="range" id="water" min="0" max="3" value="${this._currentWater}">
             </div>
           </div>
+
+          <div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">2. Select Rooms:</div>
+          <div class="rooms">
+            ${roomsHtml || '<span>No rooms configured</span>'}
+          </div>
+          
           <div class="actions">
             <button class="action-btn btn-pause" id="btn-pause">⏸ Pause</button>
-            <button class="action-btn btn-start" id="btn-start">▶ Start Selection</button>
+            <button class="action-btn btn-start" id="btn-start">▶ Start</button>
             <button class="action-btn btn-dock" id="btn-dock">🏠 Dock</button>
           </div>
         </div>
@@ -224,16 +268,16 @@ class VacuumPanel extends HTMLElement {
 
     // Attach listeners
     this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this._toggleRoom(e.target.dataset.id));
+      btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
     });
 
-    this.shadowRoot.querySelector('#suction').addEventListener('input', (e) => {
-      this._suction = parseInt(e.target.value);
-      this._render(); // simple re-render to update text
+    this.shadowRoot.querySelector('#suction').addEventListener('change', (e) => {
+      this._currentSuction = parseInt(e.target.value);
+      this._render();
     });
 
-    this.shadowRoot.querySelector('#water').addEventListener('input', (e) => {
-      this._water = parseInt(e.target.value);
+    this.shadowRoot.querySelector('#water').addEventListener('change', (e) => {
+      this._currentWater = parseInt(e.target.value);
       this._render();
     });
 

@@ -3,8 +3,11 @@ class VacuumCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._selectedRooms = new Set();
-    this._suction = 2;
-    this._water = 1;
+    // Store settings per room ID
+    this._roomSettings = {}; 
+    // Current global sliders
+    this._currentSuction = 2;
+    this._currentWater = 1;
   }
 
   setConfig(config) {
@@ -30,8 +33,14 @@ class VacuumCard extends HTMLElement {
   _toggleRoom(id) {
     if (this._selectedRooms.has(id)) {
       this._selectedRooms.delete(id);
+      delete this._roomSettings[id];
     } else {
       this._selectedRooms.add(id);
+      // Capture current slider values for this room
+      this._roomSettings[id] = {
+        suction: this._currentSuction,
+        water: this._currentWater
+      };
     }
     this.render();
   }
@@ -44,8 +53,8 @@ class VacuumCard extends HTMLElement {
       command: "clean_rooms",
       params: {
         rooms: rooms.map(Number),
-        suction: rooms.map(() => this._suction),
-        water: rooms.map(() => this._water),
+        suction: rooms.map(id => this._roomSettings[id]?.suction || 2),
+        water: rooms.map(id => this._roomSettings[id]?.water || 0),
       }
     });
   }
@@ -84,9 +93,23 @@ class VacuumCard extends HTMLElement {
         roomsArray = Object.entries(roomsData).map(([id, name]) => ({id: id, name: name}));
     }
 
+    const suctionLabels = {1: "Eco", 2: "Norm", 3: "Max", 4: "Turbo"};
+    const waterLabels = {0: "Off", 1: "Low", 2: "Med", 3: "High"};
+
     let roomsHtml = roomsArray.map(room => {
       const selected = this._selectedRooms.has(room.id);
-      return `<button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}">${room.name} ${selected ? '✓' : ''}</button>`;
+      let details = "";
+      if (selected && this._roomSettings[room.id]) {
+         const s = this._roomSettings[room.id].suction;
+         const w = this._roomSettings[room.id].water;
+         details = `<div class="room-details">💨${suctionLabels[s]} 💧${waterLabels[w]}</div>`;
+      }
+      return `
+        <button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}">
+            <div>${room.name} ${selected ? '✓' : ''}</div>
+            ${details}
+        </button>
+      `;
     }).join("");
 
     this.shadowRoot.innerHTML = `
@@ -135,19 +158,30 @@ class VacuumCard extends HTMLElement {
           padding: 8px 12px;
           border: 1px solid var(--divider-color, #ccc);
           background: var(--card-background-color);
-          border-radius: 16px;
+          border-radius: 12px;
           cursor: pointer;
           color: var(--primary-text-color);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
         .room-btn.selected {
           background: var(--primary-color);
           color: white;
           border-color: var(--primary-color);
         }
+        .room-details {
+          font-size: 0.75em;
+          margin-top: 4px;
+          opacity: 0.9;
+        }
         .sliders {
           display: flex;
           flex-direction: column;
           gap: 8px;
+          background: var(--secondary-background-color);
+          padding: 12px;
+          border-radius: 8px;
         }
         .slider-row {
           display: flex;
@@ -171,6 +205,12 @@ class VacuumCard extends HTMLElement {
           text-transform: uppercase;
           width: 100%;
         }
+        .help-text {
+          font-size: 0.8em;
+          color: var(--secondary-text-color);
+          margin-bottom: 4px;
+          text-align: center;
+        }
       </style>
       <ha-card>
         <div class="header">
@@ -184,21 +224,22 @@ class VacuumCard extends HTMLElement {
           <button class="icon-btn" id="btn-locate" title="Locate">📍</button>
         </div>
 
-        <div>
-          <div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">Rooms:</div>
-          <div class="rooms">
-            ${roomsHtml || '<span>No rooms configured</span>'}
+        <div class="sliders">
+          <div class="help-text">1. Set power & water, then click a room</div>
+          <div class="slider-row">
+            <span>Suction: ${this._currentSuction}</span>
+            <input type="range" id="suction" min="1" max="4" value="${this._currentSuction}">
+          </div>
+          <div class="slider-row">
+            <span>Water: ${this._currentWater}</span>
+            <input type="range" id="water" min="0" max="3" value="${this._currentWater}">
           </div>
         </div>
 
-        <div class="sliders">
-          <div class="slider-row">
-            <span>Suction: ${this._suction}</span>
-            <input type="range" id="suction" min="1" max="4" value="${this._suction}">
-          </div>
-          <div class="slider-row">
-            <span>Water: ${this._water}</span>
-            <input type="range" id="water" min="0" max="3" value="${this._water}">
+        <div>
+          <div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">2. Select Rooms:</div>
+          <div class="rooms">
+            ${roomsHtml || '<span>No rooms configured</span>'}
           </div>
         </div>
 
@@ -208,16 +249,16 @@ class VacuumCard extends HTMLElement {
 
     // Attach events
     this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this._toggleRoom(e.target.dataset.id));
+      btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
     });
 
-    this.shadowRoot.querySelector('#suction').addEventListener('input', (e) => {
-      this._suction = parseInt(e.target.value);
+    this.shadowRoot.querySelector('#suction').addEventListener('change', (e) => {
+      this._currentSuction = parseInt(e.target.value);
       this.render();
     });
 
-    this.shadowRoot.querySelector('#water').addEventListener('input', (e) => {
-      this._water = parseInt(e.target.value);
+    this.shadowRoot.querySelector('#water').addEventListener('change', (e) => {
+      this._currentWater = parseInt(e.target.value);
       this.render();
     });
 

@@ -4,7 +4,8 @@ class VacuumPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._config = {};
-    this._selectedRooms = new Set();
+    // Use an Array instead of Set to preserve click order
+    this._selectedRooms = [];
     this._roomSettings = {};
     this._currentSuction = 2;
     this._currentWater = 1;
@@ -67,11 +68,12 @@ class VacuumPanel extends HTMLElement {
   }
 
   _toggleRoom(id) {
-    if (this._selectedRooms.has(id)) {
-      this._selectedRooms.delete(id);
+    const index = this._selectedRooms.indexOf(id);
+    if (index !== -1) {
+      this._selectedRooms.splice(index, 1);
       delete this._roomSettings[id];
     } else {
-      this._selectedRooms.add(id);
+      this._selectedRooms.push(id);
       this._roomSettings[id] = {
         suction: this._currentSuction,
         water: this._currentWater
@@ -81,7 +83,7 @@ class VacuumPanel extends HTMLElement {
   }
 
   _startCleaning() {
-    const rooms = [...this._selectedRooms];
+    const rooms = this._selectedRooms;
     if (rooms.length === 0) return;
     this._hass.callService("vacuum", "send_command", {
       entity_id: this._config.entity_id,
@@ -195,7 +197,8 @@ class VacuumPanel extends HTMLElement {
     const waterLabels = {0: "Off", 1: "Low", 2: "Med", 3: "High"};
 
     let roomsHtml = roomsArray.map(room => {
-      const selected = this._selectedRooms.has(room.id);
+      const orderIndex = this._selectedRooms.indexOf(room.id);
+      const selected = orderIndex !== -1;
       let details = "";
       if (selected && this._roomSettings[room.id]) {
          const s = this._roomSettings[room.id].suction;
@@ -204,7 +207,7 @@ class VacuumPanel extends HTMLElement {
       }
       return `
         <button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}">
-            <div>${room.name} ${selected ? '✓' : ''}</div>
+            <div>${room.name} ${selected ? `<span class="badge">${orderIndex + 1}</span>` : ''}</div>
             ${details}
         </button>
       `;
@@ -314,6 +317,15 @@ class VacuumPanel extends HTMLElement {
           background: var(--primary-color, #03a9f4);
           color: white;
           border-color: var(--primary-color, #03a9f4);
+        }
+        .badge {
+          background: white;
+          color: var(--primary-color, #03a9f4);
+          border-radius: 50%;
+          padding: 2px 6px;
+          font-size: 0.8em;
+          font-weight: bold;
+          margin-left: 4px;
         }
         .room-details {
           font-size: 0.75em;

@@ -3,11 +3,16 @@ class VacuumCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._selectedRooms = new Set();
-    // Store settings per room ID
     this._roomSettings = {}; 
-    // Current global sliders
     this._currentSuction = 2;
     this._currentWater = 1;
+    this._mapTimer = null;
+    this._scale = 1;
+    this._panning = false;
+    this._pointX = 0;
+    this._pointY = 0;
+    this._startX = 0;
+    this._startY = 0;
   }
 
   setConfig(config) {
@@ -20,6 +25,7 @@ class VacuumCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this.render();
+    this._manageMapRefresh();
   }
 
   static getConfigElement() {
@@ -30,13 +36,55 @@ class VacuumCard extends HTMLElement {
     return { entity: "vacuum.tuya_vacuum" };
   }
 
+  _manageMapRefresh() {
+    if (!this._hass || !this.config.entity) return;
+    const vacuumState = this._hass.states[this.config.entity];
+    if (!vacuumState) return;
+
+    const isCleaning = ["cleaning", "returning"].includes(vacuumState.state);
+    
+    if (isCleaning && !this._mapTimer) {
+      this._mapTimer = setInterval(() => {
+        const url = this._getMapUrl();
+        if (url) {
+          const separator = url.includes("?") ? "&" : "?";
+          const newImg = new Image();
+          newImg.onload = () => {
+            const img = this.shadowRoot.querySelector("#vacuum-map");
+            if (img) img.src = newImg.src;
+          };
+          newImg.src = url + `${separator}t=${Date.now()}`;
+        }
+      }, 30000);
+    } else if (!isCleaning && this._mapTimer) {
+      clearInterval(this._mapTimer);
+      this._mapTimer = null;
+    }
+  }
+
+  _getMapUrl() {
+    if (!this._hass || !this.config.entity) return "";
+    
+    // Find the image entity associated with the integration
+    for (const entityId in this._hass.states) {
+      if (entityId.startsWith('image.')) {
+        const stateObj = this._hass.states[entityId];
+        // Guessing the map belongs to our integration if it has calibration_points
+        if (stateObj.attributes && stateObj.attributes.calibration_points) {
+             const token = stateObj.attributes.access_token;
+             return `/api/image_proxy/${entityId}` + (token ? `?token=${token}` : "");
+        }
+      }
+    }
+    return "";
+  }
+
   _toggleRoom(id) {
     if (this._selectedRooms.has(id)) {
       this._selectedRooms.delete(id);
       delete this._roomSettings[id];
     } else {
       this._selectedRooms.add(id);
-      // Capture current slider values for this room
       this._roomSettings[id] = {
         suction: this._currentSuction,
         water: this._currentWater
@@ -65,6 +113,61 @@ class VacuumCard extends HTMLElement {
     this._hass.callService(domain, service, payload);
   }
 
+  // PAN & ZOOM Handlers
+  _setTransform() {
+    const img = this.shadowRoot.querySelector("#vacuum-map");
+    if (img) {
+      img.style.transform = `translate(${this._pointX}px, ${this._pointY}px) scale(${this._scale})`;
+    }
+  }
+
+  _handleWheel(e) {
+    e.preventDefault();
+    const xs = (e.clientX - this._pointX) / this._scale;
+    const ys = (e.clientY - this._pointY) / this._scale;
+    const delta = (e.wheelDelta ? e.wheelDelta : -e.deltaY);
+    (delta > 0) ? (this._scale *= 1.2) : (this._scale /= 1.2);
+    this._scale = Math.min(Math.max(0.5, this._scale), 5);
+    this._pointX = e.clientX - xs * this._scale;
+    this._pointY = e.clientY - ys * this._scale;
+    this._setTransform();
+  }
+
+  _handlePointerDown(e) {
+    e.preventDefault();
+    this._startX = e.clientX - this._pointX;
+    this._startY = e.clientY - this._pointY;
+    this._panning = true;
+  }
+
+  _handlePointerUp(e) {
+    e.preventDefault();
+    this._panning = false;
+  }
+
+  _handlePointerMove(e) {
+    if (!this._panning) return;
+    e.preventDefault();
+    this._pointX = e.clientX - this._startX;
+    this._pointY = e.clientY - this._startY;
+    this._setTransform();
+  }
+
+  _handlePresetChange(e) {
+    const preset = e.target.value;
+    if (!preset) return;
+    
+    // Find the select entity for presets
+    const selectEntityId = Object.keys(this._hass.states).find(id => id.startsWith("select.") && id.includes("preset"));
+    
+    if (selectEntityId) {
+      this._hass.callService("select", "select_option", {
+        entity_id: selectEntityId,
+        option: preset
+      });
+    }
+  }
+
   render() {
     if (!this._hass || !this.config.entity) return;
 
@@ -78,19 +181,31 @@ class VacuumCard extends HTMLElement {
       return;
     }
 
-    const battery = stateObj.attributes.battery_level ?? "?";
+    const battery = this._hass.states["sensor.battery"]?.state || stateObj.attributes.battery_level || "?";
     const status = stateObj.state;
     
-    // Check if rooms are provided via card config, otherwise fallback to entity attributes
     let roomsData = this.config.rooms || stateObj.attributes.rooms;
-    
-    // Normalize rooms into an array of {id, name}
     let roomsArray = [];
     if (Array.isArray(roomsData)) {
-        roomsArray = roomsData; // Already an array from config
+        roomsArray = roomsData;
     } else if (typeof roomsData === 'object' && roomsData !== null) {
-        // Convert object from attributes to array
         roomsArray = Object.entries(roomsData).map(([id, name]) => ({id: id, name: name}));
+    }
+
+    const mapUrl = this._getMapUrl();
+
+    // Try to find the preset entity
+    const presetEntityId = Object.keys(this._hass.states).find(id => id.startsWith("select.") && id.includes("preset"));
+    const presetState = presetEntityId ? this._hass.states[presetEntityId] : null;
+    let presetOptionsHtml = "";
+    if (presetState && presetState.attributes.options) {
+      presetOptionsHtml = `<div class="preset-selector">
+        <label>Quick Preset: </label>
+        <select id="preset-select">
+          <option value="">(Select to apply globally)</option>
+          ${presetState.attributes.options.map(opt => `<option value="${opt}" ${presetState.state === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+        </select>
+      </div>`;
     }
 
     const suctionLabels = {1: "Eco", 2: "Norm", 3: "Max", 4: "Turbo"};
@@ -112,6 +227,17 @@ class VacuumCard extends HTMLElement {
       `;
     }).join("");
 
+    // Fast update check
+    if (this.shadowRoot.querySelector('ha-card') && this.shadowRoot.querySelector('.header-status')) {
+        this.shadowRoot.querySelector('.header-status').innerText = `[${status}] 🔋 ${battery}%`;
+        this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || '<span>No rooms configured</span>';
+        
+        this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
+        });
+        return;
+    }
+
     this.shadowRoot.innerHTML = `
       <style>
         ha-card {
@@ -126,6 +252,29 @@ class VacuumCard extends HTMLElement {
           align-items: center;
           font-weight: bold;
           font-size: 1.2em;
+        }
+        .map-wrapper {
+          width: 100%;
+          background: #333;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 35vh;
+          min-height: 250px;
+          overflow: hidden;
+          position: relative;
+          cursor: grab;
+          border-radius: 8px;
+        }
+        .map-wrapper:active {
+          cursor: grabbing;
+        }
+        #vacuum-map {
+          transform-origin: 0 0;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          transition: transform 0.1s ease-out;
         }
         .controls {
           display: flex;
@@ -148,6 +297,19 @@ class VacuumCard extends HTMLElement {
         .icon-btn:hover {
           background-color: var(--primary-color);
           color: white;
+        }
+        .preset-selector {
+          margin-bottom: 8px;
+          padding: 8px;
+          background: var(--secondary-background-color, #f9f9f9);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .preset-selector select {
+          padding: 4px 8px;
+          border-radius: 4px;
         }
         .rooms {
           display: flex;
@@ -211,27 +373,45 @@ class VacuumCard extends HTMLElement {
           margin-bottom: 4px;
           text-align: center;
         }
+        .map-hint {
+          position: absolute;
+          bottom: 8px;
+          right: 8px;
+          background: rgba(0,0,0,0.5);
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 0.8em;
+          pointer-events: none;
+        }
       </style>
       <ha-card>
         <div class="header">
           <span>🤖 Vacuum</span>
-          <span>[${status}] 🔋 ${battery}%</span>
+          <span class="header-status">[${status}] 🔋 ${battery}%</span>
         </div>
         
+        <div class="map-wrapper" id="map-wrapper">
+          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
+          <div class="map-hint">Scroll to Zoom | Drag to Pan</div>
+        </div>
+
         <div class="controls">
           <button class="icon-btn" id="btn-pause" title="Pause">⏸</button>
           <button class="icon-btn" id="btn-dock" title="Dock">🏠</button>
           <button class="icon-btn" id="btn-locate" title="Locate">📍</button>
         </div>
+        
+        ${presetOptionsHtml}
 
         <div class="sliders">
           <div class="help-text">1. Set power & water, then click a room</div>
           <div class="slider-row">
-            <span>Suction: ${this._currentSuction}</span>
+            <span>Suction: <span id="suc-val">${this._currentSuction}</span></span>
             <input type="range" id="suction" min="1" max="4" value="${this._currentSuction}">
           </div>
           <div class="slider-row">
-            <span>Water: ${this._currentWater}</span>
+            <span>Water: <span id="wat-val">${this._currentWater}</span></span>
             <input type="range" id="water" min="0" max="3" value="${this._currentWater}">
           </div>
         </div>
@@ -247,19 +427,34 @@ class VacuumCard extends HTMLElement {
       </ha-card>
     `;
 
+    // Attach map pan/zoom listeners
+    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
+    if (wrapper) {
+      wrapper.addEventListener('wheel', (e) => this._handleWheel(e), { passive: false });
+      wrapper.addEventListener('pointerdown', (e) => this._handlePointerDown(e));
+      wrapper.addEventListener('pointerup', (e) => this._handlePointerUp(e));
+      wrapper.addEventListener('pointerleave', (e) => this._handlePointerUp(e));
+      wrapper.addEventListener('pointermove', (e) => this._handlePointerMove(e));
+    }
+
     // Attach events
     this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
     });
 
+    const presetSelect = this.shadowRoot.querySelector('#preset-select');
+    if (presetSelect) {
+        presetSelect.addEventListener('change', (e) => this._handlePresetChange(e));
+    }
+
     this.shadowRoot.querySelector('#suction').addEventListener('change', (e) => {
       this._currentSuction = parseInt(e.target.value);
-      this.render();
+      this.shadowRoot.querySelector('#suc-val').innerText = this._currentSuction;
     });
 
     this.shadowRoot.querySelector('#water').addEventListener('change', (e) => {
       this._currentWater = parseInt(e.target.value);
-      this.render();
+      this.shadowRoot.querySelector('#wat-val').innerText = this._currentWater;
     });
 
     this.shadowRoot.querySelector('#btn-start').addEventListener('click', () => this._startCleaning());

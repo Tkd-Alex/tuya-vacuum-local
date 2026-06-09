@@ -9,6 +9,14 @@ class VacuumPanel extends HTMLElement {
     this._currentSuction = 2;
     this._currentWater = 1;
     this._mapTimer = null;
+    
+    // Map pan/zoom state
+    this._scale = 1;
+    this._panning = false;
+    this._pointX = 0;
+    this._pointY = 0;
+    this._startX = 0;
+    this._startY = 0;
   }
 
   set panel(panel) {
@@ -92,6 +100,63 @@ class VacuumPanel extends HTMLElement {
     this._hass.callService(domain, service, payload);
   }
 
+  // PAN & ZOOM Handlers
+  _setTransform() {
+    const img = this.shadowRoot.querySelector("#vacuum-map");
+    if (img) {
+      img.style.transform = `translate(${this._pointX}px, ${this._pointY}px) scale(${this._scale})`;
+    }
+  }
+
+  _handleWheel(e) {
+    e.preventDefault();
+    const xs = (e.clientX - this._pointX) / this._scale;
+    const ys = (e.clientY - this._pointY) / this._scale;
+    const delta = (e.wheelDelta ? e.wheelDelta : -e.deltaY);
+    (delta > 0) ? (this._scale *= 1.2) : (this._scale /= 1.2);
+    // Limit scale
+    this._scale = Math.min(Math.max(0.5, this._scale), 5);
+    this._pointX = e.clientX - xs * this._scale;
+    this._pointY = e.clientY - ys * this._scale;
+    this._setTransform();
+  }
+
+  _handlePointerDown(e) {
+    e.preventDefault();
+    this._startX = e.clientX - this._pointX;
+    this._startY = e.clientY - this._pointY;
+    this._panning = true;
+  }
+
+  _handlePointerUp(e) {
+    e.preventDefault();
+    this._panning = false;
+  }
+
+  _handlePointerMove(e) {
+    if (!this._panning) return;
+    e.preventDefault();
+    this._pointX = e.clientX - this._startX;
+    this._pointY = e.clientY - this._startY;
+    this._setTransform();
+  }
+
+  _handlePresetChange(e) {
+    const preset = e.target.value;
+    if (!preset) return;
+    
+    // Find the select entity for presets
+    const entryId = this._config.entity_id.split('_').slice(-1)[0]; // naive extraction, works if id contains entry_id
+    const selectEntityId = Object.keys(this._hass.states).find(id => id.startsWith("select.") && id.includes("preset"));
+    
+    if (selectEntityId) {
+      this._hass.callService("select", "select_option", {
+        entity_id: selectEntityId,
+        option: preset
+      });
+    }
+  }
+
   _render() {
     if (!this._hass || !this._config.entity_id) return;
 
@@ -112,6 +177,20 @@ class VacuumPanel extends HTMLElement {
 
     const mapUrl = this._getMapUrl();
 
+    // Try to find the preset entity
+    const presetEntityId = Object.keys(this._hass.states).find(id => id.startsWith("select.") && id.includes("preset"));
+    const presetState = presetEntityId ? this._hass.states[presetEntityId] : null;
+    let presetOptionsHtml = "";
+    if (presetState && presetState.attributes.options) {
+      presetOptionsHtml = `<div class="preset-selector">
+        <label>Quick Preset: </label>
+        <select id="preset-select">
+          <option value="">(Select to apply globally)</option>
+          ${presetState.attributes.options.map(opt => `<option value="${opt}" ${presetState.state === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+
     const suctionLabels = {1: "Eco", 2: "Norm", 3: "Max", 4: "Turbo"};
     const waterLabels = {0: "Off", 1: "Low", 2: "Med", 3: "High"};
 
@@ -131,6 +210,21 @@ class VacuumPanel extends HTMLElement {
       `;
     }).join("");
 
+    // Prevent re-rendering the entire HTML if we are just updating state, to preserve map zoom/pan.
+    // We'll use a fast update if the shell exists.
+    if (this.shadowRoot.querySelector('.container')) {
+        // Fast update (Rooms, Battery, Status)
+        this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}% [${status}]`;
+        this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || '<span>No rooms configured</span>';
+        
+        // Re-attach room listeners
+        this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
+        });
+        return;
+    }
+
+    // Initial render
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -161,21 +255,43 @@ class VacuumPanel extends HTMLElement {
           align-items: center;
           font-size: 1.2em;
         }
-        .map-container {
+        .map-wrapper {
           width: 100%;
-          background: #e5e5e5;
+          background: #333; /* Dark background looks better with transparent maps */
           display: flex;
           justify-content: center;
           align-items: center;
+          height: 40vh;
           min-height: 300px;
+          overflow: hidden;
+          position: relative;
+          cursor: grab;
         }
-        .map-container img {
+        .map-wrapper:active {
+          cursor: grabbing;
+        }
+        #vacuum-map {
+          transform-origin: 0 0;
           max-width: 100%;
-          max-height: 50vh;
+          max-height: 100%;
           object-fit: contain;
+          transition: transform 0.1s ease-out;
         }
         .controls {
           padding: 16px;
+        }
+        .preset-selector {
+          margin-bottom: 12px;
+          padding: 8px;
+          background: var(--secondary-background-color, #f9f9f9);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .preset-selector select {
+          padding: 4px 8px;
+          border-radius: 4px;
         }
         .rooms {
           display: flex;
@@ -246,25 +362,39 @@ class VacuumPanel extends HTMLElement {
           margin-bottom: 8px;
           text-align: center;
         }
+        .map-hint {
+          position: absolute;
+          bottom: 8px;
+          right: 8px;
+          background: rgba(0,0,0,0.5);
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 0.8em;
+          pointer-events: none;
+        }
       </style>
       <div class="container">
         <div class="header">
           <span>🤖 Tuya Vacuum</span>
-          <span>🔋 ${battery}% [${status}]</span>
+          <span class="header-status">🔋 ${battery}% [${status}]</span>
         </div>
-        <div class="map-container">
+        <div class="map-wrapper" id="map-wrapper">
           ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
+          <div class="map-hint">Scroll to Zoom | Drag to Pan</div>
         </div>
         <div class="controls">
           
+          ${presetOptionsHtml}
+
           <div class="sliders">
             <div class="help-text">1. Set power & water, then click a room</div>
             <div class="slider-row">
-              <span>Suction: ${this._currentSuction}</span>
+              <span>Suction: <span id="suc-val">${this._currentSuction}</span></span>
               <input type="range" id="suction" min="1" max="4" value="${this._currentSuction}">
             </div>
             <div class="slider-row">
-              <span>Water: ${this._currentWater}</span>
+              <span>Water: <span id="wat-val">${this._currentWater}</span></span>
               <input type="range" id="water" min="0" max="3" value="${this._currentWater}">
             </div>
           </div>
@@ -283,19 +413,34 @@ class VacuumPanel extends HTMLElement {
       </div>
     `;
 
-    // Attach listeners
+    // Attach map pan/zoom listeners
+    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
+    if (wrapper) {
+      wrapper.addEventListener('wheel', (e) => this._handleWheel(e), { passive: false });
+      wrapper.addEventListener('pointerdown', (e) => this._handlePointerDown(e));
+      wrapper.addEventListener('pointerup', (e) => this._handlePointerUp(e));
+      wrapper.addEventListener('pointerleave', (e) => this._handlePointerUp(e));
+      wrapper.addEventListener('pointermove', (e) => this._handlePointerMove(e));
+    }
+
+    // Attach control listeners
     this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
     });
 
+    const presetSelect = this.shadowRoot.querySelector('#preset-select');
+    if (presetSelect) {
+        presetSelect.addEventListener('change', (e) => this._handlePresetChange(e));
+    }
+
     this.shadowRoot.querySelector('#suction').addEventListener('change', (e) => {
       this._currentSuction = parseInt(e.target.value);
-      this._render();
+      this.shadowRoot.querySelector('#suc-val').innerText = this._currentSuction;
     });
 
     this.shadowRoot.querySelector('#water').addEventListener('change', (e) => {
       this._currentWater = parseInt(e.target.value);
-      this._render();
+      this.shadowRoot.querySelector('#wat-val').innerText = this._currentWater;
     });
 
     this.shadowRoot.querySelector('#btn-start').addEventListener('click', () => this._startCleaning());
@@ -305,3 +450,4 @@ class VacuumPanel extends HTMLElement {
 }
 
 customElements.define("vacuum-panel", VacuumPanel);
+

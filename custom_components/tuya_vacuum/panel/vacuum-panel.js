@@ -68,6 +68,7 @@ class VacuumPanel extends HTMLElement {
     this._passes = 1;
     this._carpetBoost = false;
     this._activePreset = null;
+    this._locked = false;
     this._mapTimer = null;
     this._scale = 1;
     this._pointX = 0;
@@ -324,6 +325,8 @@ class VacuumPanel extends HTMLElement {
     if (this.shadowRoot.querySelector('.container')) {
         this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}% [${status}]`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
+        this.shadowRoot.querySelector('.interactive-area').className = `interactive-area ${this._locked ? 'locked' : ''}`;
+        this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
           btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
@@ -340,7 +343,12 @@ class VacuumPanel extends HTMLElement {
         .container { max-width: 800px; margin: 0 auto; background: var(--card-background-color, white); border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; }
         .header { padding: 16px; background: var(--primary-color, #03a9f4); color: var(--text-primary-color, white); display: flex; justify-content: space-between; align-items: center; font-size: 1.2em; }
         .header-title { display: flex; align-items: center; gap: 8px; }
+        .header-actions { display: flex; align-items: center; gap: 12px; }
         .back-btn { background: transparent; border: none; color: white; font-size: 1.2em; cursor: pointer; padding: 4px; margin-right: 8px; border-radius: 50%; display: flex; align-items: center; }
+        .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
+        .icon-btn:hover { background: rgba(255,255,255,0.4); }
+        .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
+        .interactive-area.locked { pointer-events: none; opacity: 0.5; filter: grayscale(50%); }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -373,20 +381,28 @@ class VacuumPanel extends HTMLElement {
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; pointer-events: none; }
       </style>
       <div class="container">
-        <div class="header"><div class="header-title"><button class="back-btn" id="btn-back">←</button><span>🤖 ${t.vacuum}</span></div><span class="header-status">🔋 ${battery}% [${status}]</span></div>
-        <div class="map-wrapper" id="map-wrapper">
-          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
-          <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
+        <div class="header">
+          <div class="header-title"><button class="back-btn" id="btn-back">←</button><span>🤖 ${t.vacuum}</span></div>
+          <div class="header-actions">
+            <span class="header-status">🔋 ${battery}% [${status}]</span>
+            <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
+          </div>
         </div>
-        <div class="controls">
-          <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
-          <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
-          <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
-          <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
-          <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
-          <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
-          <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
-          <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
+        <div class="interactive-area ${this._locked ? 'locked' : ''}">
+          <div class="map-wrapper" id="map-wrapper">
+            ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
+            <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
+          </div>
+          <div class="controls">
+            <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
+            <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
+            <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
+            <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
+            <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
+            <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
+            <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
+            <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
+          </div>
         </div>
       </div>
     `;
@@ -413,6 +429,7 @@ class VacuumPanel extends HTMLElement {
     this.shadowRoot.querySelector('#btn-pause').addEventListener('click', () => this._callService("vacuum", "pause"));
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));
     this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
+    this.shadowRoot.querySelector('#btn-lock').addEventListener('click', () => { this._locked = !this._locked; this._render(); });
   }
 }
 customElements.define("vacuum-panel", VacuumPanel);

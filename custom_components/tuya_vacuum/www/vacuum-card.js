@@ -64,6 +64,7 @@ class VacuumCard extends HTMLElement {
     this._passes = 1;
     this._carpetBoost = false;
     this._activePreset = null;
+    this._locked = false;
     this._mapTimer = null;
     this._scale = 1;
     this._pointX = 0;
@@ -314,6 +315,8 @@ class VacuumCard extends HTMLElement {
     if (this.shadowRoot.querySelector('ha-card') && this.shadowRoot.querySelector('.header-status')) {
         this.shadowRoot.querySelector('.header-status').innerText = `[${status}] 🔋 ${battery}%`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
+        this.shadowRoot.querySelector('.interactive-area').className = `interactive-area ${this._locked ? 'locked' : ''}`;
+        this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => { btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id)); });
         return;
@@ -324,11 +327,15 @@ class VacuumCard extends HTMLElement {
       <style>
         ha-card { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.2em; }
+        .header-actions { display: flex; align-items: center; gap: 8px; }
+        .header-status { font-size: 0.85em; font-weight: normal; }
+        .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; }
+        .interactive-area.locked { pointer-events: none; opacity: 0.5; filter: grayscale(50%); }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
         .controls { display: flex; justify-content: center; gap: 12px; }
-        .icon-btn { background: none; border: none; cursor: pointer; font-size: 24px; color: var(--primary-text-color); padding: 8px; border-radius: 50%; background-color: var(--secondary-background-color); display: flex; align-items: center; justify-content: center; }
+        .icon-btn { background: none; border: none; cursor: pointer; font-size: 20px; color: var(--primary-text-color); padding: 6px; border-radius: 50%; background-color: var(--secondary-background-color); display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background-color: var(--primary-color); color: white; }
         .seg-group { margin-bottom: 8px; }
         .seg-label { font-size: 0.85em; color: var(--secondary-text-color, #666); margin-bottom: 6px; font-weight: 500; }
@@ -356,19 +363,27 @@ class VacuumCard extends HTMLElement {
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7em; pointer-events: none; }
       </style>
       <ha-card>
-        <div class="header"><span>🤖 ${t.vacuum}</span><span class="header-status">[${status}] 🔋 ${battery}%</span></div>
-        <div class="map-wrapper" id="map-wrapper">
-          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
-          <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
+        <div class="header">
+          <span>🤖 ${t.vacuum}</span>
+          <div class="header-actions">
+            <span class="header-status">[${status}] 🔋 ${battery}%</span>
+            <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
+          </div>
         </div>
-        <div class="controls"><button class="icon-btn" id="btn-pause" title="${t.pause}">⏸</button><button class="icon-btn" id="btn-dock" title="${t.dock}">🏠</button><button class="icon-btn" id="btn-locate" title="${t.locate}">📍</button></div>
-        <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
-        <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
-        <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
-        <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
-        <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
-        <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
-        <button class="start-btn" id="btn-start">▶ ${t.start}</button>
+        <div class="interactive-area ${this._locked ? 'locked' : ''}">
+          <div class="map-wrapper" id="map-wrapper">
+            ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
+            <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
+          </div>
+          <div class="controls"><button class="icon-btn" id="btn-pause" title="${t.pause}">⏸</button><button class="icon-btn" id="btn-dock" title="${t.dock}">🏠</button><button class="icon-btn" id="btn-locate" title="${t.locate}">📍</button></div>
+          <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
+          <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
+          <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
+          <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
+          <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
+          <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
+          <button class="start-btn" id="btn-start">▶ ${t.start}</button>
+        </div>
       </ha-card>
     `;
     const wrapper = this.shadowRoot.querySelector('#map-wrapper');
@@ -393,6 +408,7 @@ class VacuumCard extends HTMLElement {
     this.shadowRoot.querySelector('#btn-pause').addEventListener('click', () => this._callService("vacuum", "pause"));
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));
     this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
+    this.shadowRoot.querySelector('#btn-lock').addEventListener('click', () => { this._locked = !this._locked; this.render(); });
   }
 }
 customElements.define("vacuum-card", VacuumCard);

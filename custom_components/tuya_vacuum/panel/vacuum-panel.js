@@ -291,15 +291,25 @@ class VacuumPanel extends HTMLElement {
     const stateObj = this._hass.states[this._config.entity_id];
     if (!stateObj || !stateObj.attributes) return '';
 
-    let baseName = stateObj.attributes.tuya_local_base || this._config.entity_id.split('.')[1];
-    // Strip trailing numeric suffix like "_2", "_3" to allow fuzzy matching
-    baseName = baseName.replace(/_\d+$/, '');
-    
+    const rawBase = stateObj.attributes.tuya_local_base || this._config.entity_id.split('.')[1];
+    // Build candidate prefixes: try the exact name first, then without trailing _N suffix.
+    // This handles the case where tuya-local created "orsetto_lavatore_2" entities because
+    // "orsetto_lavatore" was already taken by a Tuya Cloud integration.
+    const strippedBase = rawBase.replace(/_\d+$/, '');
+    const candidates = rawBase !== strippedBase ? [rawBase, strippedBase] : [rawBase];
+
     const states = this._hass.states;
-    
+    let resolvedBase = null;
+
     const findState = (keywords) => {
-       const key = Object.keys(states).find(k => k.startsWith(`sensor.${baseName}`) && keywords.some(kw => k.includes(kw)));
-       return key ? states[key].state + ' ' + (states[key].attributes.unit_of_measurement || '').trim() : null;
+      for (const base of candidates) {
+        const key = Object.keys(states).find(k => k.startsWith(`sensor.${base}`) && keywords.some(kw => k.includes(kw)));
+        if (key) {
+          resolvedBase = base;
+          return states[key].state + ' ' + (states[key].attributes.unit_of_measurement || '').trim();
+        }
+      }
+      return null;
     };
 
     const filter = findState(['filter', 'filtro']);
@@ -314,7 +324,7 @@ class VacuumPanel extends HTMLElement {
           <details class="stats-accordion">
             <summary>🔧 ${t.maintenance}</summary>
             <div class="stats-content" style="padding: 12px; font-size: 0.85em; color: var(--error-color, #e53935);">
-              [Debug] Nessun sensore TuyaLocal trovato. Nome base cercato: <b>sensor.${baseName}_*</b>. Verifica l'entità TuyaLocal.
+              [Debug] Nessun sensore TuyaLocal trovato. Cercato: <b>${candidates.map(c => `sensor.${c}_*`).join(', ')}</b>. Verifica l'entità TuyaLocal.
             </div>
           </details>
         `;

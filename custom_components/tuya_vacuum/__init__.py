@@ -1,5 +1,6 @@
 """Tuya Vacuum Local — Home Assistant integration."""
 from __future__ import annotations
+import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN
@@ -7,6 +8,8 @@ from .coordinator import TuyaVacuumCoordinator
 
 from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.http import StaticPathConfig
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["vacuum", "image"]
 

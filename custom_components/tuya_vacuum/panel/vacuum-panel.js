@@ -369,7 +369,7 @@ class VacuumPanel extends HTMLElement {
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); }
         .actions { display: flex; gap: 8px; justify-content: center; }
         .action-btn { padding: 10px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; flex-grow: 1; color: white; text-transform: uppercase; font-size: 0.9em; }
-        .btn-start { background: #4caf50; } .btn-pause { background: #ff9800; } .btn-dock { background: #2196f3; }
+        .btn-start { background: #4caf50; } .btn-pause { background: #ff9800; } .btn-dock { background: #2196f3; } .btn-locate { background: #9c27b0; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; pointer-events: none; }
       </style>
       <div class="container">
@@ -386,7 +386,7 @@ class VacuumPanel extends HTMLElement {
           <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
           <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
           <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
-          <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button></div>
+          <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
         </div>
       </div>
     `;
@@ -412,6 +412,7 @@ class VacuumPanel extends HTMLElement {
     this.shadowRoot.querySelector('#btn-start').addEventListener('click', () => this._startCleaning());
     this.shadowRoot.querySelector('#btn-pause').addEventListener('click', () => this._callService("vacuum", "pause"));
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));
+    this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
   }
 }
 customElements.define("vacuum-panel", VacuumPanel);

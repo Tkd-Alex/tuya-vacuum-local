@@ -53,8 +53,8 @@ const LABELS = {
     low: "Low",
     medium: "Medium",
     high: "High",
-    map_hint_desktop: "🖱 Scroll zoom · Drag pan · Double-click reset",
-    map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset",
+    map_hint_desktop: "🖱 Scroll zoom · Drag pan · Double-click reset · Click room = select",
+    map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset · Tap room = select",
     select_rooms_hint: "Select Rooms:",
     no_rooms: "No rooms configured",
     maintenance: "Maintenance & Stats",
@@ -132,18 +132,54 @@ class VacuumCard extends HTMLElement {
     }
   }
 
-  _getMapUrl() {
-    if (!this._hass || !this.config.entity) return "";
+  _getMapEntity() {
+    if (!this._hass) return null;
     for (const entityId in this._hass.states) {
       if (entityId.startsWith('image.')) {
         const stateObj = this._hass.states[entityId];
-        if (stateObj.attributes && stateObj.attributes.calibration_points) {
-             const token = stateObj.attributes.access_token;
-             return `/api/image_proxy/${entityId}` + (token ? `?token=${token}` : "");
-        }
+        if (stateObj.attributes && stateObj.attributes.calibration_points) return stateObj;
       }
     }
+    return null;
+  }
+
+  _getMapUrl() {
+    const mapState = this._getMapEntity();
+    if (mapState) {
+      const token = mapState.attributes.access_token;
+      return `/api/image_proxy/${mapState.entity_id}` + (token ? `?token=${token}` : "");
+    }
     return "";
+  }
+
+  _getMapRooms() {
+    return this._getMapEntity()?.attributes?.rooms || null;
+  }
+
+  _handleMapClick(e) {
+    const mapRooms = this._getMapRooms();
+    if (!mapRooms) return;
+    const img = this.shadowRoot.querySelector('#vacuum-map');
+    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
+    if (!img || !img.naturalWidth || !wrapper) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const wW = rect.width, wH = rect.height;
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const imgX = (clickX - wW / 2 - this._pointX) / this._scale + img.naturalWidth / 2;
+    const imgY = (clickY - wH / 2 - this._pointY) / this._scale + img.naturalHeight / 2;
+
+    const MAX_DIST = Math.max(40, 80 / this._scale);
+    let bestId = null, bestDist = Infinity;
+    for (const [id, room] of Object.entries(mapRooms)) {
+      const dx = imgX - room.pixel_x, dy = imgY - room.pixel_y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < bestDist) { bestDist = dist; bestId = id; }
+    }
+    if (bestId !== null && bestDist <= MAX_DIST) {
+      this._toggleRoom(bestId);
+    }
   }
 
   _toggleRoom(id) {
@@ -248,9 +284,16 @@ class VacuumCard extends HTMLElement {
     if (e.pointerType === 'touch') return;
     e.preventDefault(); this._isPanning = true;
     this._startX = e.clientX - this._pointX; this._startY = e.clientY - this._pointY;
+    this._pointerDownX = e.clientX; this._pointerDownY = e.clientY;
     const img = this.shadowRoot.querySelector('#vacuum-map'); if (img) img.style.transition = 'none';
   }
-  _handlePointerUp() { this._isPanning = false; }
+  _handlePointerUp(e) {
+    if (this._isPanning && e) {
+      const dx = e.clientX - this._pointerDownX, dy = e.clientY - this._pointerDownY;
+      if (Math.hypot(dx, dy) < 5) this._handleMapClick(e);
+    }
+    this._isPanning = false;
+  }
   _handlePointerMove(e) {
     if (!this._isPanning || e.pointerType === 'touch') return;
     e.preventDefault(); this._pointX = e.clientX - this._startX; this._pointY = e.clientY - this._startY;
@@ -266,6 +309,7 @@ class VacuumCard extends HTMLElement {
       this._pinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     } else if (e.touches.length === 1) {
       this._isPanning = true; this._startX = e.touches[0].clientX - this._pointX; this._startY = e.touches[0].clientY - this._pointY;
+      this._pointerDownX = e.touches[0].clientX; this._pointerDownY = e.touches[0].clientY;
       const img = this.shadowRoot.querySelector('#vacuum-map'); if (img) img.style.transition = 'none';
     }
   }
@@ -286,7 +330,14 @@ class VacuumCard extends HTMLElement {
       this._applyTransform();
     }
   }
-  _handleTouchEnd() { this._lastPinchDist = null; this._isPanning = false; }
+  _handleTouchEnd(e) {
+    if (this._isPanning && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0];
+      const dx = t.clientX - this._pointerDownX, dy = t.clientY - this._pointerDownY;
+      if (Math.hypot(dx, dy) < 10) this._handleMapClick(t);
+    }
+    this._lastPinchDist = null; this._isPanning = false;
+  }
 
   _getStatsHtml(t) {
     if (!this._hass || !this.config.entity) return '';
@@ -487,13 +538,13 @@ class VacuumCard extends HTMLElement {
     if (wrapper) {
       wrapper.addEventListener('wheel', (e) => this._handleWheel(e), { passive: false });
       wrapper.addEventListener('pointerdown', (e) => this._handlePointerDown(e));
-      wrapper.addEventListener('pointerup', () => this._handlePointerUp());
-      wrapper.addEventListener('pointerleave', () => this._handlePointerUp());
+      wrapper.addEventListener('pointerup', (e) => this._handlePointerUp(e));
+      wrapper.addEventListener('pointerleave', (e) => this._handlePointerUp(e));
       wrapper.addEventListener('pointermove', (e) => this._handlePointerMove(e));
       wrapper.addEventListener('dblclick', () => this._handleDoubleClick());
       wrapper.addEventListener('touchstart', (e) => this._handleTouchStart(e), { passive: false });
       wrapper.addEventListener('touchmove', (e) => this._handleTouchMove(e), { passive: false });
-      wrapper.addEventListener('touchend', () => this._handleTouchEnd());
+      wrapper.addEventListener('touchend', (e) => this._handleTouchEnd(e));
     }
     this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => { btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id)); });
     this.shadowRoot.querySelectorAll('.preset-chip').forEach(chip => { chip.addEventListener('click', (e) => this._applyPreset(e.target.dataset.preset)); });

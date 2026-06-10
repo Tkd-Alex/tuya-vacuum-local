@@ -305,9 +305,20 @@ class VacuumPanel extends HTMLElement {
          const wIcon = {0:"⭕", 1:"💧", 2:"💧💧", 3:"💧💧💧"}[r.water];
          const pText = r.passes > 1 ? ` · ${r.passes}×` : "";
          const bIcon = r.carpet_boost ? " · 🏔️" : "";
-         details = `<div class="room-details">${sIcon} ${wIcon}${pText}${bIcon}</div>`;
+         
+         const suctionLabelsShort = {1: t.eco, 2: t.normal.substring(0,3), 3: t.strong.substring(0,3), 4: t.max};
+         const waterLabelsShort = {0: t.off, 1: t.low.substring(0,3), 2: t.medium.substring(0,3), 3: t.high.substring(0,3)};
+         
+         details = `<div class="room-details">
+           <span>${sIcon} ${suctionLabelsShort[r.suction]}</span>
+           <span>${wIcon} ${waterLabelsShort[r.water]}</span>
+           ${pText}${bIcon}
+         </div>`;
       }
-      return `<button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}"><div>${room.name} ${selected ? `<span class="badge">${orderIndex + 1}</span>` : ''}</div>${details}</button>`;
+      return `<button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}">
+          <div class="room-name">${room.name} ${selected ? `<span class="badge">${orderIndex + 1}</span>` : ''}</div>
+          ${details}
+      </button>`;
     }).join("");
 
     if (this.shadowRoot.querySelector('.container')) {
@@ -344,10 +355,11 @@ class VacuumPanel extends HTMLElement {
         .preset-chip { padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--divider-color, #ddd); background: var(--secondary-background-color, #f5f5f5); color: var(--primary-text-color); cursor: pointer; font-size: 0.9em; transition: all 0.15s; }
         .preset-chip.active { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); }
         .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-bottom: 16px; }
-        .room-btn { padding: 10px 4px; border: 1px solid var(--divider-color, #ccc); background: var(--secondary-background-color, #f9f9f9); border-radius: 12px; cursor: pointer; color: var(--primary-text-color, #333); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50px; }
+        .room-btn { padding: 8px 4px; border: 1px solid var(--divider-color, #ccc); background: var(--secondary-background-color, #f9f9f9); border-radius: 12px; cursor: pointer; color: var(--primary-text-color, #333); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 65px; }
+        .room-name { font-weight: 500; font-size: 0.95em; margin-bottom: 2px; }
         .room-btn.selected { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); }
         .badge { background: white; color: var(--primary-color, #03a9f4); border-radius: 50%; padding: 2px 6px; font-size: 0.8em; font-weight: bold; margin-left: 4px; }
-        .room-details { font-size: 0.75em; margin-top: 4px; opacity: 0.9; }
+        .room-details { font-size: 0.7em; opacity: 0.9; display: flex; flex-direction: column; line-height: 1.1; }
         .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--divider-color, #eee); margin-top: 8px; }
         .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
         .toggle-switch input { display: none; }

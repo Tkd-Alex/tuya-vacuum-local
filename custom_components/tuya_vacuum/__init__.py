@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import TuyaVacuumCoordinator
 
-from homeassistant.components import frontend
+from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.http import StaticPathConfig
 
 PLATFORMS = ["vacuum", "image"]
@@ -42,7 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register the panel in the sidebar
     if vacuum_entity_id:
         rooms = entry.options.get("rooms", entry.data.get("rooms", {}))
-        frontend.async_register_panel(
+        async_register_built_in_panel(
             hass,
             component_name="custom",
             sidebar_title="Tuya Vacuum",

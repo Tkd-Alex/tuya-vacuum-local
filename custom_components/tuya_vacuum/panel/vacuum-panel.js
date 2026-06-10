@@ -404,6 +404,19 @@ class VacuumPanel extends HTMLElement {
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         const startBtn = this.shadowRoot.querySelector('#btn-start');
         if (startBtn) startBtn.disabled = this._selectedRooms.length === 0;
+        // Refresh map src with current token to avoid stale-token 401s
+        const mapImg = this.shadowRoot.querySelector('#vacuum-map');
+        if (mapImg) {
+          const freshUrl = this._getMapUrl();
+          if (freshUrl) {
+            const sep = freshUrl.includes('?') ? '&' : '?';
+            const withBust = freshUrl + sep + 't=' + Date.now();
+            if (mapImg.dataset.baseUrl !== freshUrl) {
+              mapImg.src = withBust;
+              mapImg.dataset.baseUrl = freshUrl;
+            }
+          }
+        }
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
           btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));

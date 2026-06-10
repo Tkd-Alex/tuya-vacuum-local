@@ -1,6 +1,6 @@
 """Vacuum entity for Tuya Vacuum Local."""
 from __future__ import annotations
-import base64, struct, time
+import base64, logging, struct, time
 from typing import Any
 
 from homeassistant.components.vacuum import (
@@ -17,6 +17,8 @@ from .const import (
     MODE_ROOM, MODE_SMART, MODE_CHARGE,
 )
 from .coordinator import TuyaVacuumCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 # Fixed protocol frames (from reverse engineering)
 _WAKE  = "qgAGTQE7msoD8A=="

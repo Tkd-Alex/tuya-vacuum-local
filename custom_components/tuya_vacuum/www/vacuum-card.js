@@ -87,6 +87,9 @@ class VacuumCard extends HTMLElement {
     this._startY = 0;
     this._isPanning = false;
     this._lastPinchDist = null;
+    this._pendingAction = null;
+    this._pendingTimer = null;
+    this._prevStatus = null;
   }
 
   setConfig(config) {
@@ -96,8 +99,39 @@ class VacuumCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._pendingAction) {
+      const st = hass.states[this.config.entity]?.state;
+      if (st && st !== this._prevStatus) this._clearPending();
+    }
+    const st = hass.states[this.config.entity]?.state;
+    if (st) this._prevStatus = st;
     this.render();
     this._manageMapRefresh();
+  }
+
+  _setPending(action) {
+    this._pendingAction = action;
+    clearTimeout(this._pendingTimer);
+    this._pendingTimer = setTimeout(() => this._clearPending(), 15000);
+    this._updateActionButtons();
+  }
+
+  _clearPending() {
+    this._pendingAction = null;
+    clearTimeout(this._pendingTimer);
+    this._pendingTimer = null;
+    this._updateActionButtons();
+  }
+
+  _updateActionButtons() {
+    const p = this._pendingAction;
+    const map = { start: '#btn-start', pause: '#btn-pause', dock: '#btn-dock', locate: '#btn-locate' };
+    Object.entries(map).forEach(([action, sel]) => {
+      const btn = this.shadowRoot.querySelector(sel);
+      if (!btn) return;
+      btn.classList.toggle('pending', p === action);
+      if (sel !== '#btn-start') btn.disabled = (p !== null && p !== action);
+    });
   }
 
   static getConfigElement() { return document.createElement("vacuum-card-editor"); }
@@ -157,6 +191,7 @@ class VacuumCard extends HTMLElement {
   }
 
   _handleMapClick(e) {
+    return; // room-from-map selection disabled pending calibration fix
     const mapRooms = this._getMapRooms();
     if (!mapRooms) return;
     const img = this.shadowRoot.querySelector('#vacuum-map');
@@ -229,6 +264,7 @@ class VacuumCard extends HTMLElement {
   _startCleaning() {
     const rooms = this._selectedRooms;
     if (rooms.length === 0) return;
+    this._setPending('start');
     this._hass.callService("vacuum", "send_command", {
       entity_id: this.config.entity,
       command: "clean_rooms",
@@ -244,6 +280,8 @@ class VacuumCard extends HTMLElement {
 
   _callService(domain, service, data = {}) {
     if (!this._hass || !this.config.entity) return;
+    const actionMap = { pause: 'pause', return_to_base: 'dock', locate: 'locate' };
+    if (actionMap[service]) this._setPending(actionMap[service]);
     this._hass.callService(domain, service, { entity_id: this.config.entity, ...data });
   }
 
@@ -403,6 +441,30 @@ class VacuumCard extends HTMLElement {
 
     const t = this._getT();
     const battery = stateObj.attributes.battery_level ?? "?", status = stateObj.state;
+
+    const tuya_local_base = stateObj.attributes.tuya_local_base;
+    const tuyaState = (() => {
+      if (!tuya_local_base) return null;
+      const candidates = [tuya_local_base, tuya_local_base.replace(/_\d+$/, '')];
+      for (const c of candidates) {
+        const s = this._hass.states[`vacuum.${c}`];
+        if (s) return s;
+      }
+      return null;
+    })();
+    const tuyaAttrs = tuyaState?.attributes || {};
+    const fanSpeed = tuyaAttrs.fan_speed || null;
+    const tuyaStatus = tuyaState?.state || null;
+    const isLocating = tuyaAttrs.locate === true;
+    const isFault = status === 'error' || tuyaStatus === 'fault';
+
+    const STATUS_ICONS = { cleaning: '🧹', docked: '🔌', charging: '🔌', idle: '💤', paused: '⏸', returning: '↩️', error: '⚠️', fault: '⚠️', standby: '💤', selectroom: '🧹', zone_clean: '🧹', smart: '🧹' };
+    const statusIcon = STATUS_ICONS[tuyaStatus || status] || '❓';
+    const statusChipClass = ['cleaning','selectroom','zone_clean','smart'].includes(tuyaStatus || status) ? 'cleaning' : isFault ? 'error' : '';
+    const FAN_ICONS = { low: '🍃', medium: '💨', high: '🌪️', max: '🚀', auto: '🔄' };
+    const fanIcon = FAN_ICONS[fanSpeed] || '💨';
+    const displayStatus = (tuyaStatus || status).replace(/_/g, ' ');
+
     let roomsData = this.config.rooms || stateObj.attributes.rooms, roomsArray = [];
     if (Array.isArray(roomsData)) { roomsArray = roomsData; } 
     else if (typeof roomsData === 'object' && roomsData !== null) { roomsArray = Object.entries(roomsData).map(([id, name]) => ({id: id, name: name})); }
@@ -436,12 +498,15 @@ class VacuumCard extends HTMLElement {
     }).join("");
 
     if (this.shadowRoot.querySelector('ha-card') && this.shadowRoot.querySelector('.header-status')) {
-        this.shadowRoot.querySelector('.header-status').innerText = `[${status}] 🔋 ${battery}%`;
+        this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}%`;
+        const sb = this.shadowRoot.querySelector('.status-bar');
+        if (sb) sb.innerHTML = `<span class="status-chip ${statusChipClass}">${statusIcon} ${displayStatus}</span>${fanSpeed ? `<span class="status-chip">${fanIcon} ${fanSpeed}</span>` : ''}${isLocating ? `<span class="status-chip active">📍 ${t.locate}</span>` : ''}`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
         this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         const startBtn = this.shadowRoot.querySelector('#btn-start');
-        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0;
+        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0 || (this._pendingAction !== null && this._pendingAction !== 'start');
+        this._updateActionButtons();
         // Refresh map src with current token to avoid stale-token 401s
         const mapImg = this.shadowRoot.querySelector('#vacuum-map');
         if (mapImg) {
@@ -497,8 +562,18 @@ class VacuumCard extends HTMLElement {
         .toggle-slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.3s; }
         .toggle-switch input:checked + .toggle-slider { background: var(--primary-color, #03a9f4); }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
-        .start-btn { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; font-size: 0.9em; }
+        .status-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 0.82em; color: var(--secondary-text-color, #666); }
+        .status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: var(--secondary-background-color, #f5f5f5); border: 1px solid var(--divider-color, #ddd); white-space: nowrap; }
+        .status-chip.active { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); }
+        .status-chip.cleaning { background: #4caf50; color: white; border-color: #4caf50; }
+        .status-chip.error { background: #e53935; color: white; border-color: #e53935; }
+        .start-btn { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; font-size: 0.9em; transition: opacity 0.2s; position: relative; overflow: hidden; }
         .start-btn:disabled { background: #a5d6a7; cursor: not-allowed; opacity: 0.6; }
+        .start-btn.pending { opacity: 0.7; cursor: wait; }
+        .start-btn.pending::after { content: ''; position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .icon-btn.pending { opacity: 0.7; cursor: wait; position: relative; overflow: hidden; }
+        .icon-btn.pending::after { content: ''; position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border: 2px solid rgba(128,128,128,0.4); border-top-color: var(--primary-text-color); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7em; pointer-events: none; }
         .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); }
         .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
@@ -513,16 +588,25 @@ class VacuumCard extends HTMLElement {
         <div class="header">
           <span>🤖 ${t.vacuum}</span>
           <div class="header-actions">
-            <span class="header-status">[${status}] 🔋 ${battery}%</span>
+            <span class="header-status">🔋 ${battery}%</span>
             <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
           </div>
+        </div>
+        <div class="status-bar">
+          <span class="status-chip ${statusChipClass}">${statusIcon} ${displayStatus}</span>
+          ${fanSpeed ? `<span class="status-chip">${fanIcon} ${fanSpeed}</span>` : ''}
+          ${isLocating ? `<span class="status-chip active">📍 ${t.locate}</span>` : ''}
         </div>
         <div class="interactive-area">
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
           </div>
-          <div class="controls"><button class="icon-btn" id="btn-pause" title="${t.pause}">⏸</button><button class="icon-btn" id="btn-dock" title="${t.dock}">🏠</button><button class="icon-btn" id="btn-locate" title="${t.locate}">📍</button></div>
+          <div class="controls">
+            <button class="icon-btn ${this._pendingAction==='pause'?'pending':''}" id="btn-pause" title="${t.pause}" ${this._pendingAction&&this._pendingAction!=='pause'?'disabled':''}>⏸</button>
+            <button class="icon-btn ${this._pendingAction==='dock'?'pending':''}" id="btn-dock" title="${t.dock}" ${this._pendingAction&&this._pendingAction!=='dock'?'disabled':''}>🏠</button>
+            <button class="icon-btn ${this._pendingAction==='locate'?'pending':''}" id="btn-locate" title="${t.locate}" ${this._pendingAction&&this._pendingAction!=='locate'?'disabled':''}>📍</button>
+          </div>
           <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
           <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
           <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
@@ -530,7 +614,7 @@ class VacuumCard extends HTMLElement {
           <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
           <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
           ${this._getStatsHtml(t)}
-          <button class="start-btn" id="btn-start" ${this._selectedRooms.length === 0 ? 'disabled' : ''}>▶ ${t.start}</button>
+          <button class="start-btn ${this._pendingAction==='start'?'pending':''}" id="btn-start" ${this._selectedRooms.length===0||(this._pendingAction&&this._pendingAction!=='start')?'disabled':''}>▶ ${t.start}</button>
         </div>
       </ha-card>
     `;

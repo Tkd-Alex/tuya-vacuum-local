@@ -91,6 +91,9 @@ class VacuumPanel extends HTMLElement {
     this._startY = 0;
     this._isPanning = false;
     this._lastPinchDist = null;
+    this._pendingAction = null;
+    this._pendingTimer = null;
+    this._prevStatus = null;
   }
 
   set panel(panel) {
@@ -100,8 +103,39 @@ class VacuumPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._pendingAction) {
+      const st = hass.states[this._config.entity_id]?.state;
+      if (st && st !== this._prevStatus) this._clearPending();
+    }
+    const st = hass.states[this._config.entity_id]?.state;
+    if (st) this._prevStatus = st;
     this._render();
     this._manageMapRefresh();
+  }
+
+  _setPending(action) {
+    this._pendingAction = action;
+    clearTimeout(this._pendingTimer);
+    this._pendingTimer = setTimeout(() => this._clearPending(), 15000);
+    this._updateActionButtons();
+  }
+
+  _clearPending() {
+    this._pendingAction = null;
+    clearTimeout(this._pendingTimer);
+    this._pendingTimer = null;
+    this._updateActionButtons();
+  }
+
+  _updateActionButtons() {
+    const p = this._pendingAction;
+    const map = { start: '#btn-start', pause: '#btn-pause', dock: '#btn-dock', locate: '#btn-locate' };
+    Object.entries(map).forEach(([action, sel]) => {
+      const btn = this.shadowRoot.querySelector(sel);
+      if (!btn) return;
+      btn.classList.toggle('pending', p === action);
+      if (sel !== '#btn-start') btn.disabled = (p !== null && p !== action);
+    });
   }
 
   _getT() {
@@ -150,6 +184,7 @@ class VacuumPanel extends HTMLElement {
   }
 
   _handleMapClick(e) {
+    return; // room-from-map selection disabled pending calibration fix
     const mapRooms = this._getMapRooms();
     if (!mapRooms) return;
     const img = this.shadowRoot.querySelector('#vacuum-map');
@@ -226,6 +261,7 @@ class VacuumPanel extends HTMLElement {
   _startCleaning() {
     const rooms = this._selectedRooms;
     if (rooms.length === 0) return;
+    this._setPending('start');
     this._hass.callService("vacuum", "send_command", {
       entity_id: this._config.entity_id,
       command: "clean_rooms",
@@ -241,6 +277,8 @@ class VacuumPanel extends HTMLElement {
 
   _callService(domain, service, data = {}) {
     if (!this._hass || !this._config.entity_id) return;
+    const actionMap = { pause: 'pause', return_to_base: 'dock', locate: 'locate' };
+    if (actionMap[service]) this._setPending(actionMap[service]);
     this._hass.callService(domain, service, { entity_id: this._config.entity_id, ...data });
   }
 
@@ -396,6 +434,17 @@ class VacuumPanel extends HTMLElement {
     `;
   }
 
+  _statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t) {
+    const displayStatus = tuyaStatus || status;
+    const statusLabel = displayStatus.replace(/_/g, ' ');
+    return `
+      <span class="status-chip ${statusChipClass}">${statusIcon} ${statusLabel}</span>
+      ${fanSpeed ? `<span class="status-chip">${fanIcon} ${fanSpeed}</span>` : ''}
+      <span class="status-chip">🔋 ${battery}%</span>
+      ${isLocating ? `<span class="status-chip active">📍 ${t.locate}</span>` : ''}
+    `;
+  }
+
   _render() {
     if (!this._hass || !this._config.entity_id) return;
     const vacuumState = this._hass.states[this._config.entity_id];
@@ -404,7 +453,38 @@ class VacuumPanel extends HTMLElement {
     const t = this._getT();
     const battery = vacuumState.attributes.battery_level ?? "?";
     const status = vacuumState.state;
-    
+
+    // Read live attributes from the TuyaLocal entity
+    const tuya_local_id = this._config.entity_id ? (() => {
+      const base = vacuumState.attributes.tuya_local_base;
+      if (base) {
+        const candidates = [base, base.replace(/_\d+$/, '')];
+        for (const c of candidates) {
+          const eid = `vacuum.${c}`;
+          if (this._hass.states[eid]) return eid;
+        }
+      }
+      return null;
+    })() : null;
+    const tuyaState = tuya_local_id ? this._hass.states[tuya_local_id] : null;
+    const tuyaAttrs = tuyaState?.attributes || {};
+    const fanSpeed = tuyaAttrs.fan_speed || null;
+    const tuyaStatus = tuyaState?.state || null;
+    const isLocating = tuyaAttrs.locate === true;
+    const isFault = status === 'error' || tuyaStatus === 'fault';
+
+    const STATUS_ICONS = {
+      cleaning: '🧹', docked: '🔌', charging: '🔌', idle: '💤',
+      paused: '⏸', returning: '↩️', error: '⚠️', fault: '⚠️',
+      standby: '💤', selectroom: '🧹', zone_clean: '🧹', smart: '🧹',
+    };
+    const statusIcon = STATUS_ICONS[tuyaStatus || status] || '❓';
+    const statusChipClass = ['cleaning','selectroom','zone_clean','smart'].includes(tuyaStatus || status) ? 'cleaning'
+      : isFault ? 'error' : '';
+
+    const FAN_ICONS = { low: '🍃', medium: '💨', high: '🌪️', max: '🚀', auto: '🔄' };
+    const fanIcon = FAN_ICONS[fanSpeed] || '💨';
+
     let roomsData = this._config.rooms || vacuumState.attributes.rooms;
     let roomsArray = [];
     if (Array.isArray(roomsData)) { roomsArray = roomsData; } 
@@ -448,12 +528,16 @@ class VacuumPanel extends HTMLElement {
     }).join("");
 
     if (this.shadowRoot.querySelector('.container')) {
-        this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}% [${status}]`;
+        this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}%`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
         this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         const startBtn = this.shadowRoot.querySelector('#btn-start');
-        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0;
+        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0 || (this._pendingAction !== null && this._pendingAction !== 'start');
+        this._updateActionButtons();
+        // Update status bar
+        const sb = this.shadowRoot.querySelector('.status-bar');
+        if (sb) sb.innerHTML = this._statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t);
         // Refresh map src with current token to avoid stale-token 401s
         const mapImg = this.shadowRoot.querySelector('#vacuum-map');
         if (mapImg) {
@@ -516,10 +600,18 @@ class VacuumPanel extends HTMLElement {
         .toggle-slider:before { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.3s; }
         .toggle-switch input:checked + .toggle-slider { background: var(--primary-color, #03a9f4); }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); }
+        .status-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--secondary-background-color, #f5f5f5); border-bottom: 1px solid var(--divider-color, #eee); font-size: 0.82em; color: var(--secondary-text-color, #666); }
+        .status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: var(--card-background-color, white); border: 1px solid var(--divider-color, #ddd); white-space: nowrap; }
+        .status-chip.active { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); }
+        .status-chip.cleaning { background: #4caf50; color: white; border-color: #4caf50; }
+        .status-chip.error { background: #e53935; color: white; border-color: #e53935; }
         .actions { display: flex; gap: 8px; justify-content: center; }
-        .action-btn { padding: 10px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; flex-grow: 1; color: white; text-transform: uppercase; font-size: 0.9em; }
+        .action-btn { padding: 10px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; flex-grow: 1; color: white; text-transform: uppercase; font-size: 0.9em; transition: opacity 0.2s, transform 0.1s; position: relative; overflow: hidden; }
         .btn-start { background: #4caf50; } .btn-pause { background: #ff9800; } .btn-dock { background: #2196f3; } .btn-locate { background: #9c27b0; }
         .btn-start:disabled { background: #a5d6a7; cursor: not-allowed; opacity: 0.6; }
+        .action-btn.pending { opacity: 0.7; cursor: wait; }
+        .action-btn.pending::after { content: ''; position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; pointer-events: none; }
         .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); margin-bottom: 16px; }
         .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
@@ -534,10 +626,11 @@ class VacuumPanel extends HTMLElement {
         <div class="header">
           <div class="header-title"><button class="back-btn" id="btn-back">←</button><span>🤖 ${t.vacuum}</span></div>
           <div class="header-actions">
-            <span class="header-status">🔋 ${battery}% [${status}]</span>
+            <span class="header-status">🔋 ${battery}%</span>
             <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
           </div>
         </div>
+        <div class="status-bar">${this._statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t)}</div>
         <div class="interactive-area">
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
@@ -552,7 +645,12 @@ class VacuumPanel extends HTMLElement {
             <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
             <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
             ${this._getStatsHtml(t)}
-            <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start" ${this._selectedRooms.length === 0 ? 'disabled' : ''}>▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
+            <div class="actions">
+              <button class="action-btn btn-pause ${this._pendingAction==='pause'?'pending':''}" id="btn-pause" ${this._pendingAction&&this._pendingAction!=='pause'?'disabled':''}>⏸ ${t.pause}</button>
+              <button class="action-btn btn-start ${this._pendingAction==='start'?'pending':''}" id="btn-start" ${this._selectedRooms.length===0||( this._pendingAction&&this._pendingAction!=='start')?'disabled':''}>▶ ${t.start}</button>
+              <button class="action-btn btn-dock ${this._pendingAction==='dock'?'pending':''}" id="btn-dock" ${this._pendingAction&&this._pendingAction!=='dock'?'disabled':''}>🏠 ${t.dock}</button>
+              <button class="action-btn btn-locate ${this._pendingAction==='locate'?'pending':''}" id="btn-locate" ${this._pendingAction&&this._pendingAction!=='locate'?'disabled':''}>📍 ${t.locate}</button>
+            </div>
           </div>
         </div>
       </div>

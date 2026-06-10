@@ -381,6 +381,8 @@ class VacuumCard extends HTMLElement {
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
         this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
+        const startBtn = this.shadowRoot.querySelector('#btn-start');
+        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0;
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => { btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id)); });
         return;
@@ -424,6 +426,7 @@ class VacuumCard extends HTMLElement {
         .toggle-switch input:checked + .toggle-slider { background: var(--primary-color, #03a9f4); }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
         .start-btn { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; font-size: 0.9em; }
+        .start-btn:disabled { background: #a5d6a7; cursor: not-allowed; opacity: 0.6; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7em; pointer-events: none; }
         .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); }
         .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
@@ -455,7 +458,7 @@ class VacuumCard extends HTMLElement {
           <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
           <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
           ${this._getStatsHtml(t)}
-          <button class="start-btn" id="btn-start">▶ ${t.start}</button>
+          <button class="start-btn" id="btn-start" ${this._selectedRooms.length === 0 ? 'disabled' : ''}>▶ ${t.start}</button>
         </div>
       </ha-card>
     `;

@@ -391,6 +391,8 @@ class VacuumPanel extends HTMLElement {
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
         this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
+        const startBtn = this.shadowRoot.querySelector('#btn-start');
+        if (startBtn) startBtn.disabled = this._selectedRooms.length === 0;
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
           btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id));
@@ -442,6 +444,7 @@ class VacuumPanel extends HTMLElement {
         .actions { display: flex; gap: 8px; justify-content: center; }
         .action-btn { padding: 10px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; flex-grow: 1; color: white; text-transform: uppercase; font-size: 0.9em; }
         .btn-start { background: #4caf50; } .btn-pause { background: #ff9800; } .btn-dock { background: #2196f3; } .btn-locate { background: #9c27b0; }
+        .btn-start:disabled { background: #a5d6a7; cursor: not-allowed; opacity: 0.6; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; pointer-events: none; }
         .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); margin-bottom: 16px; }
         .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
@@ -474,7 +477,7 @@ class VacuumPanel extends HTMLElement {
             <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
             <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
             ${this._getStatsHtml(t)}
-            <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
+            <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start" ${this._selectedRooms.length === 0 ? 'disabled' : ''}>▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
           </div>
         </div>
       </div>

@@ -135,7 +135,22 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         d = self.coordinator.data or {}
         rooms = self._entry.options.get("rooms", self._entry.data.get("rooms", {}))
         tuya_local_entity = self._entry.options.get("tuya_local_entity", self._entry.data.get("tuya_local_entity", ""))
-        tuya_local_base = tuya_local_entity.split(".")[1] if "." in tuya_local_entity else ""
+
+        # Derive base name from the configured tuya-local entity, but only if that
+        # entity actually exists in the state machine. If it doesn't (stale config),
+        # fall back to an empty string so the JS debug message is informative.
+        tuya_local_base = ""
+        if tuya_local_entity and "." in tuya_local_entity:
+            candidate = tuya_local_entity.split(".")[1]
+            if self.hass.states.get(tuya_local_entity):
+                tuya_local_base = candidate
+            else:
+                _LOGGER.warning(
+                    "tuya_local_entity '%s' not found in state machine — "
+                    "open Options and re-select the TuyaLocal vacuum entity",
+                    tuya_local_entity,
+                )
+
         return {
             "mode":       d.get("mode"),
             "water":      d.get("water"),
@@ -145,6 +160,7 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
             "fault_code": d.get("fault"),
             "rooms":      rooms,
             "tuya_local_base": tuya_local_base,
+            "tuya_local_entity": tuya_local_entity,
             "integration": "Companion for TuyaLocal",
         }
 
@@ -191,11 +207,9 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         resume        (clear fault)
         """
         params = params or {}
-        
-        # Handle carpet boost DP if provided
+        _LOGGER.debug("send_command: command=%s params=%s", command, params)
+
         if "carpet_boost" in params:
-            # Placeholder DP for carpet boost - needs verification for specific model
-            # For now we just log it as we don't have the confirmed DP ID
             _LOGGER.debug("Carpet boost requested: %s", params["carpet_boost"])
         if command == "clean_rooms":
             await self.hass.async_add_executor_job(
@@ -222,6 +236,7 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
     # ── Internal command builders ──────────────────────────────
 
     def _do_clean_rooms(self, params: dict) -> None:
+        _LOGGER.info("_do_clean_rooms: %s", params)
         c  = self.coordinator
         rooms    = [int(x) for x in params.get("rooms", [0,1,2,3,4])]
         suctions = [_parse_int_or_none(x) for x in _pad(params.get("suction"), len(rooms), None)]

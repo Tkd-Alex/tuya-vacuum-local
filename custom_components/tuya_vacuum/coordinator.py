@@ -69,26 +69,36 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
     def send_dp(self, dp: int, value: Any) -> None:
         """Connect, send DP, and disconnect."""
         d = self._get_device(persistent=False)
-        d.set_value(dp, value)
+        result = d.set_value(dp, value)
+        if result and result.get("Error"):
+            _LOGGER.warning("send_dp %s=%s error: %s", dp, value, result)
 
     def send_multiple(self, values: dict) -> None:
         """Connect, send multiple DPs, and disconnect."""
         d = self._get_device(persistent=False)
-        d.set_multiple_values(values)
+        result = d.set_multiple_values(values)
+        if result and result.get("Error"):
+            _LOGGER.warning("send_multiple %s error: %s", values, result)
 
     def send_sequence(self, sequence: list) -> None:
-        """Execute a sequence of commands using a single persistent connection (BUG-09)."""
+        """Execute a sequence of DP commands over a single persistent connection."""
         d = self._get_device(persistent=True)
         try:
             for item in sequence:
                 if isinstance(item, dict):
-                    d.set_multiple_values(item)
+                    result = d.set_multiple_values(item)
                 else:
                     dp, val = item
-                    d.set_value(dp, val)
-                time.sleep(0.3)
+                    result = d.set_value(dp, val)
+                if result and result.get("Error"):
+                    _LOGGER.warning("send_sequence step %s error: %s", item, result)
+                time.sleep(0.15)
+        except Exception as exc:
+            _LOGGER.error("send_sequence failed: %s", exc)
+            raise
         finally:
             d.close()
+            _LOGGER.debug("send_sequence completed, connection released")
 
     def send_dp15(self, b64: str) -> None:
         """Connect, send raw DP15, and disconnect."""

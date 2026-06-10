@@ -136,6 +136,19 @@ class VacuumPanel extends HTMLElement {
       btn.classList.toggle('pending', p === action);
       if (sel !== '#btn-start') btn.disabled = (p !== null && p !== action);
     });
+    // Show/hide full overlay
+    const area = this.shadowRoot.querySelector('.interactive-area');
+    if (!area) return;
+    let overlay = this.shadowRoot.querySelector('#loading-overlay');
+    if (p && !overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'loading-overlay';
+      overlay.className = 'loading-overlay';
+      overlay.innerHTML = '<div class="spinner"></div>';
+      area.insertBefore(overlay, area.firstChild);
+    } else if (!p && overlay) {
+      overlay.remove();
+    }
   }
 
   _getT() {
@@ -412,7 +425,10 @@ class VacuumPanel extends HTMLElement {
           <details class="stats-accordion">
             <summary>🔧 ${t.maintenance}</summary>
             <div class="stats-content" style="padding: 12px; font-size: 0.85em; color: var(--error-color, #e53935);">
-              [Debug] Nessun sensore TuyaLocal trovato. Cercato: <b>${candidates.map(c => `sensor.${c}_*`).join(', ')}</b>. Verifica l'entità TuyaLocal.
+              [Debug] Nessun sensore TuyaLocal trovato.<br>
+              Entità configurata: <b>${stateObj.attributes.tuya_local_entity || '(non configurata)'}</b><br>
+              Cercato: <b>${candidates.map(c => `sensor.${c}_*`).join(', ')}</b><br>
+              Vai in Impostazioni → Integrazioni → Tuya Vacuum → Configura e riseleziona l'entità TuyaLocal.
             </div>
           </details>
         `;
@@ -572,7 +588,9 @@ class VacuumPanel extends HTMLElement {
         .back-btn:hover { background: rgba(255,255,255,0.4); }
         .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background: rgba(255,255,255,0.4); }
-        .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
+        .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; position: relative; }
+        .loading-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: 0 0 12px 12px; }
+        .loading-overlay .spinner { width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; transition: all 0.3s ease; touch-action: none; }
         .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
@@ -632,6 +650,7 @@ class VacuumPanel extends HTMLElement {
         </div>
         <div class="status-bar">${this._statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t)}</div>
         <div class="interactive-area">
+          ${this._pendingAction ? `<div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>` : ''}
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>

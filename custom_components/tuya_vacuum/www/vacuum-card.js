@@ -132,6 +132,18 @@ class VacuumCard extends HTMLElement {
       btn.classList.toggle('pending', p === action);
       if (sel !== '#btn-start') btn.disabled = (p !== null && p !== action);
     });
+    const area = this.shadowRoot.querySelector('.interactive-area');
+    if (!area) return;
+    let overlay = this.shadowRoot.querySelector('#loading-overlay');
+    if (p && !overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'loading-overlay';
+      overlay.className = 'loading-overlay';
+      overlay.innerHTML = '<div class="spinner"></div>';
+      area.insertBefore(overlay, area.firstChild);
+    } else if (!p && overlay) {
+      overlay.remove();
+    }
   }
 
   static getConfigElement() { return document.createElement("vacuum-card-editor"); }
@@ -412,7 +424,10 @@ class VacuumCard extends HTMLElement {
           <details class="stats-accordion">
             <summary>🔧 ${t.maintenance}</summary>
             <div class="stats-content" style="padding: 12px; font-size: 0.85em; color: var(--error-color, #e53935);">
-              [Debug] Nessun sensore TuyaLocal trovato. Cercato: <b>${candidates.map(c => `sensor.${c}_*`).join(', ')}</b>. Verifica l'entità TuyaLocal.
+              [Debug] Nessun sensore TuyaLocal trovato.<br>
+              Entità configurata: <b>${stateObj.attributes.tuya_local_entity || '(non configurata)'}</b><br>
+              Cercato: <b>${candidates.map(c => `sensor.${c}_*`).join(', ')}</b><br>
+              Vai in Impostazioni → Integrazioni → Tuya Vacuum → Configura e riseleziona l'entità TuyaLocal.
             </div>
           </details>
         `;
@@ -532,7 +547,9 @@ class VacuumCard extends HTMLElement {
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.2em; }
         .header-actions { display: flex; align-items: center; gap: 8px; }
         .header-status { font-size: 0.85em; font-weight: normal; }
-        .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; }
+        .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; position: relative; }
+        .loading-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: 8px; }
+        .loading-overlay .spinner { width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; transition: all 0.3s ease; touch-action: none; }
         .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
@@ -598,6 +615,7 @@ class VacuumCard extends HTMLElement {
           ${isLocating ? `<span class="status-chip active">📍 ${t.locate}</span>` : ''}
         </div>
         <div class="interactive-area">
+          ${this._pendingAction ? `<div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>` : ''}
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>

@@ -281,6 +281,7 @@ class VacuumCard extends HTMLElement {
       this._pointX = cx - (cx - this._pointX) * (newScale / this._scale); this._pointY = cy - (cy - this._pointY) * (newScale / this._scale);
       this._scale = newScale; this._lastPinchDist = dist; this._applyTransform();
     } else if (e.touches.length === 1 && this._isPanning) {
+      e.preventDefault();
       this._pointX = e.touches[0].clientX - this._startX; this._pointY = e.touches[0].clientY - this._startY;
       this._applyTransform();
     }
@@ -396,7 +397,7 @@ class VacuumCard extends HTMLElement {
         .header-actions { display: flex; align-items: center; gap: 8px; }
         .header-status { font-size: 0.85em; font-weight: normal; }
         .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; }
-        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; transition: all 0.3s ease; }
+        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; transition: all 0.3s ease; touch-action: none; }
         .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }

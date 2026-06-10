@@ -279,6 +279,7 @@ class VacuumPanel extends HTMLElement {
       this._pointX = cx - (cx - this._pointX) * (newScale / this._scale); this._pointY = cy - (cy - this._pointY) * (newScale / this._scale);
       this._scale = newScale; this._lastPinchDist = dist; this._applyTransform();
     } else if (e.touches.length === 1 && this._isPanning) {
+      e.preventDefault();
       this._pointX = e.touches[0].clientX - this._startX; this._pointY = e.touches[0].clientY - this._startY;
       this._applyTransform();
     }
@@ -414,7 +415,7 @@ class VacuumPanel extends HTMLElement {
         .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background: rgba(255,255,255,0.4); }
         .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
-        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; transition: all 0.3s ease; }
+        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; transition: all 0.3s ease; touch-action: none; }
         .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }

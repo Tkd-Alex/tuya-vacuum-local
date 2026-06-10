@@ -287,7 +287,10 @@ class VacuumPanel extends HTMLElement {
 
   _getStatsHtml(t) {
     if (!this._hass || !this._config.entity_id) return '';
-    const baseName = this._config.entity_id.split('.')[1];
+    const stateObj = this._hass.states[this._config.entity_id];
+    if (!stateObj || !stateObj.attributes) return '';
+
+    const baseName = stateObj.attributes.tuya_local_base || this._config.entity_id.split('.')[1];
     const states = this._hass.states;
     
     const findState = (keywords) => {
@@ -374,7 +377,7 @@ class VacuumPanel extends HTMLElement {
     if (this.shadowRoot.querySelector('.container')) {
         this.shadowRoot.querySelector('.header-status').innerText = `🔋 ${battery}% [${status}]`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
-        this.shadowRoot.querySelector('.interactive-area').className = `interactive-area ${this._locked ? 'locked' : ''}`;
+        this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => {
@@ -397,8 +400,8 @@ class VacuumPanel extends HTMLElement {
         .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background: rgba(255,255,255,0.4); }
         .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
-        .interactive-area.locked { pointer-events: none; opacity: 0.5; filter: grayscale(50%); }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; }
+        .map-wrapper.locked { pointer-events: none; }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
         .controls { padding: 16px; }
@@ -445,8 +448,8 @@ class VacuumPanel extends HTMLElement {
             <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
           </div>
         </div>
-        <div class="interactive-area ${this._locked ? 'locked' : ''}">
-          <div class="map-wrapper" id="map-wrapper">
+        <div class="interactive-area">
+          <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
           </div>

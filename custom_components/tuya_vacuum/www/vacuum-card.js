@@ -289,7 +289,10 @@ class VacuumCard extends HTMLElement {
 
   _getStatsHtml(t) {
     if (!this._hass || !this.config.entity) return '';
-    const baseName = this.config.entity.split('.')[1];
+    const stateObj = this._hass.states[this.config.entity];
+    if (!stateObj || !stateObj.attributes) return '';
+    
+    const baseName = stateObj.attributes.tuya_local_base || this.config.entity.split('.')[1];
     const states = this._hass.states;
     
     const findState = (keywords) => {
@@ -364,7 +367,7 @@ class VacuumCard extends HTMLElement {
     if (this.shadowRoot.querySelector('ha-card') && this.shadowRoot.querySelector('.header-status')) {
         this.shadowRoot.querySelector('.header-status').innerText = `[${status}] 🔋 ${battery}%`;
         this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
-        this.shadowRoot.querySelector('.interactive-area').className = `interactive-area ${this._locked ? 'locked' : ''}`;
+        this.shadowRoot.querySelector('#map-wrapper').className = `map-wrapper ${this._locked ? 'locked' : ''}`;
         this.shadowRoot.querySelector('#btn-lock').innerText = this._locked ? '🔒' : '🔓';
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => { btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id)); });
@@ -379,8 +382,8 @@ class VacuumCard extends HTMLElement {
         .header-actions { display: flex; align-items: center; gap: 8px; }
         .header-status { font-size: 0.85em; font-weight: normal; }
         .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; }
-        .interactive-area.locked { pointer-events: none; opacity: 0.5; filter: grayscale(50%); }
         .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; }
+        .map-wrapper.locked { pointer-events: none; }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
         .controls { display: flex; justify-content: center; gap: 12px; }
@@ -427,8 +430,8 @@ class VacuumCard extends HTMLElement {
             <button class="icon-btn" id="btn-lock" title="Lock">${this._locked ? '🔒' : '🔓'}</button>
           </div>
         </div>
-        <div class="interactive-area ${this._locked ? 'locked' : ''}">
-          <div class="map-wrapper" id="map-wrapper">
+        <div class="interactive-area">
+          <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
           </div>

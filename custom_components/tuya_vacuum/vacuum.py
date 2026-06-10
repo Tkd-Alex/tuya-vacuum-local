@@ -179,13 +179,19 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         """
         Supported commands:
 
-        clean_rooms   params: {rooms: [0,1,2], suction: [3,2,1], water: [2,0,1]}
-        clean_preset  params: {preset: "intensiva", rooms: [0,1,2]}  (optional rooms)
-        clean_zone    params: {corners: [[x1,y1,x2,y2,...]], suction: 2, water: 1}
-        clean_spot    params: {x: -88, y: -660, suction: 2}
+        clean_rooms   params: {rooms: [0,1,2], suction: [3,2,1], water: [2,0,1], passes: [1,2,1]}
+        clean_preset  params: {preset: "intensiva", rooms: [0,1,2]}
+        clean_zone    params: {corners: [[x1,y1,x2,y2,...]], suction: 2, water: 1, passes: 1}
+        clean_spot    params: {x: -88, y: -660, suction: 2, water: 1}
         resume        (clear fault)
         """
         params = params or {}
+        
+        # Handle carpet boost DP if provided
+        if "carpet_boost" in params:
+            # Placeholder DP for carpet boost - needs verification for specific model
+            # For now we just log it as we don't have the confirmed DP ID
+            _LOGGER.debug("Carpet boost requested: %s", params["carpet_boost"])
         if command == "clean_rooms":
             await self.hass.async_add_executor_job(
                 self._do_clean_rooms, params

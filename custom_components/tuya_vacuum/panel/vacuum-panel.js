@@ -290,7 +290,10 @@ class VacuumPanel extends HTMLElement {
     const stateObj = this._hass.states[this._config.entity_id];
     if (!stateObj || !stateObj.attributes) return '';
 
-    const baseName = stateObj.attributes.tuya_local_base || this._config.entity_id.split('.')[1];
+    let baseName = stateObj.attributes.tuya_local_base || this._config.entity_id.split('.')[1];
+    // Strip trailing numeric suffix like "_2", "_3" to allow fuzzy matching
+    baseName = baseName.replace(/_\d+$/, '');
+    
     const states = this._hass.states;
     
     const findState = (keywords) => {

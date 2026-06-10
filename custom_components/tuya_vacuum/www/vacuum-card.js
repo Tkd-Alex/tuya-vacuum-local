@@ -292,7 +292,10 @@ class VacuumCard extends HTMLElement {
     const stateObj = this._hass.states[this.config.entity];
     if (!stateObj || !stateObj.attributes) return '';
     
-    const baseName = stateObj.attributes.tuya_local_base || this.config.entity.split('.')[1];
+    let baseName = stateObj.attributes.tuya_local_base || this.config.entity.split('.')[1];
+    // Strip trailing numeric suffix like "_2", "_3" to allow fuzzy matching
+    baseName = baseName.replace(/_\d+$/, '');
+
     const states = this._hass.states;
     
     const findState = (keywords) => {

@@ -135,7 +135,12 @@ class VacuumPanel extends HTMLElement {
       delete this._roomSettings[id];
     } else {
       this._selectedRooms.push(id);
-      this._roomSettings[id] = { suction: this._currentSuction, water: this._currentWater, passes: this._passes };
+      this._roomSettings[id] = {
+        suction: this._currentSuction,
+        water: this._currentWater,
+        passes: this._passes,
+        carpet_boost: this._carpetBoost
+      };
     }
     this._render();
   }
@@ -295,8 +300,12 @@ class VacuumPanel extends HTMLElement {
       const selected = orderIndex !== -1;
       let details = "";
       if (selected && this._roomSettings[room.id]) {
-         const s = this._roomSettings[room.id].suction, w = this._roomSettings[room.id].water;
-         details = `<div class="room-details">💨${suctionLabels[s].substring(0,3)} 💧${waterLabels[w].substring(0,3)}</div>`;
+         const r = this._roomSettings[room.id];
+         const sIcon = {1:"🍃", 2:"💨", 3:"🌪️", 4:"🚀"}[r.suction];
+         const wIcon = {0:"⭕", 1:"💧", 2:"💧💧", 3:"💧💧💧"}[r.water];
+         const pText = r.passes > 1 ? ` · ${r.passes}×` : "";
+         const bIcon = r.carpet_boost ? " · 🏔️" : "";
+         details = `<div class="room-details">${sIcon} ${wIcon}${pText}${bIcon}</div>`;
       }
       return `<button class="room-btn ${selected ? 'selected' : ''}" data-id="${room.id}"><div>${room.name} ${selected ? `<span class="badge">${orderIndex + 1}</span>` : ''}</div>${details}</button>`;
     }).join("");

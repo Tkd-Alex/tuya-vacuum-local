@@ -1,7 +1,7 @@
 {
   "domain": "tuya_vacuum",
   "name": "Tuya Vacuum Local",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "config_flow": true,
   "integration_type": "device",
   "documentation": "https://github.com/Tkd-Alex/tuya-vacuum-local",

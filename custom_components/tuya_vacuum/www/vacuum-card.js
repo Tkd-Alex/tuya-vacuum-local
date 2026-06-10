@@ -307,7 +307,16 @@ class VacuumCard extends HTMLElement {
     const time = findState(['total_cleaning_time', 'time']);
     const count = findState(['number_of_cleans', 'count']);
 
-    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) return '';
+    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) {
+        return `
+          <details class="stats-accordion">
+            <summary>🔧 ${t.maintenance}</summary>
+            <div class="stats-content" style="padding: 12px; font-size: 0.85em; color: var(--error-color, #e53935);">
+              [Debug] Nessun sensore TuyaLocal trovato. Nome base cercato: <b>sensor.${baseName}_*</b>. Verifica l'entità TuyaLocal.
+            </div>
+          </details>
+        `;
+    }
 
     return `
       <details class="stats-accordion">
@@ -382,8 +391,8 @@ class VacuumCard extends HTMLElement {
         .header-actions { display: flex; align-items: center; gap: 8px; }
         .header-status { font-size: 0.85em; font-weight: normal; }
         .interactive-area { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.3s; }
-        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; }
-        .map-wrapper.locked { pointer-events: none; }
+        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 35vh; min-height: 250px; overflow: hidden; position: relative; cursor: grab; border-radius: 8px; transition: all 0.3s ease; }
+        .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
         .controls { display: flex; justify-content: center; gap: 12px; }

@@ -305,7 +305,16 @@ class VacuumPanel extends HTMLElement {
     const time = findState(['total_cleaning_time', 'time']);
     const count = findState(['number_of_cleans', 'count']);
 
-    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) return '';
+    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) {
+        return `
+          <details class="stats-accordion">
+            <summary>🔧 ${t.maintenance}</summary>
+            <div class="stats-content" style="padding: 12px; font-size: 0.85em; color: var(--error-color, #e53935);">
+              [Debug] Nessun sensore TuyaLocal trovato. Nome base cercato: <b>sensor.${baseName}_*</b>. Verifica l'entità TuyaLocal.
+            </div>
+          </details>
+        `;
+    }
 
     return `
       <details class="stats-accordion">
@@ -400,8 +409,8 @@ class VacuumPanel extends HTMLElement {
         .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background: rgba(255,255,255,0.4); }
         .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
-        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; }
-        .map-wrapper.locked { pointer-events: none; }
+        .map-wrapper { width: 100%; background: #333; display: flex; justify-content: center; align-items: center; height: 40vh; min-height: 300px; overflow: hidden; position: relative; cursor: grab; transition: all 0.3s ease; }
+        .map-wrapper.locked { pointer-events: none; opacity: 0.5; filter: grayscale(100%); }
         .map-wrapper:active { cursor: grabbing; }
         #vacuum-map { transform-origin: center center; max-width: 100%; max-height: 100%; object-fit: contain; }
         .controls { padding: 16px; }

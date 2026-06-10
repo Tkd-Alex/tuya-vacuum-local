@@ -132,7 +132,7 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         """Return extra attributes from cloud status."""
         d = self.coordinator.data or {}
         rooms = self._entry.options.get("rooms", self._entry.data.get("rooms", {}))
-        tuya_local_entity = self._entry.options.get("tuya_local_entity", "")
+        tuya_local_entity = self._entry.options.get("tuya_local_entity", self._entry.data.get("tuya_local_entity", ""))
         tuya_local_base = tuya_local_entity.split(".")[1] if "." in tuya_local_entity else ""
         return {
             "mode":       d.get("mode"),

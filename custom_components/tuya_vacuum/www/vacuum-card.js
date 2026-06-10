@@ -1,3 +1,58 @@
+const LABELS = {
+  it: {
+    vacuum: "Aspirapolvere",
+    battery: "Batteria",
+    status: "Stato",
+    rooms: "Stanze",
+    suction: "Aspirazione",
+    water: "Umidità panno",
+    passes: "Ripetizioni",
+    carpet_boost: "Boost tappeti",
+    start: "Avvia",
+    pause: "Pausa",
+    dock: "Base",
+    locate: "Trova",
+    eco: "Eco",
+    normal: "Normal",
+    strong: "Forte",
+    max: "Max",
+    off: "Off",
+    low: "Basso",
+    medium: "Medio",
+    high: "Alto",
+    map_hint_desktop: "🖱 Scroll zoom · Drag pan · Doppio-click reset",
+    map_hint_mobile: "👌 Pinch zoom · Drag pan · Doppio-tap reset",
+    select_rooms_hint: "Seleziona stanze:",
+    no_rooms: "Nessuna stanza configurata"
+  },
+  en: {
+    vacuum: "Vacuum",
+    battery: "Battery",
+    status: "Status",
+    rooms: "Rooms",
+    suction: "Suction",
+    water: "Mop Water",
+    passes: "Passes",
+    carpet_boost: "Carpet Boost",
+    start: "Start",
+    pause: "Pause",
+    dock: "Dock",
+    locate: "Locate",
+    eco: "Eco",
+    normal: "Normal",
+    strong: "Strong",
+    max: "Max",
+    off: "Off",
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+    map_hint_desktop: "🖱 Scroll zoom · Drag pan · Double-click reset",
+    map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset",
+    select_rooms_hint: "Select Rooms:",
+    no_rooms: "No rooms configured"
+  }
+};
+
 class VacuumCard extends HTMLElement {
   constructor() {
     super();
@@ -20,9 +75,7 @@ class VacuumCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error("You need to define entity");
-    }
+    if (!config.entity) { throw new Error("You need to define entity"); }
     this.config = config;
   }
 
@@ -32,21 +85,19 @@ class VacuumCard extends HTMLElement {
     this._manageMapRefresh();
   }
 
-  static getConfigElement() {
-    return document.createElement("vacuum-card-editor");
-  }
+  static getConfigElement() { return document.createElement("vacuum-card-editor"); }
+  static getStubConfig() { return { entity: "vacuum.tuya_vacuum" }; }
 
-  static getStubConfig() {
-    return { entity: "vacuum.tuya_vacuum" };
+  _getT() {
+    const lang = (this._hass?.language || 'en').split('-')[0];
+    return LABELS[lang] || LABELS['en'];
   }
 
   _manageMapRefresh() {
     if (!this._hass || !this.config.entity) return;
     const vacuumState = this._hass.states[this.config.entity];
     if (!vacuumState) return;
-
     const isCleaning = ["cleaning", "returning"].includes(vacuumState.state);
-    
     if (isCleaning && !this._mapTimer) {
       this._mapTimer = setInterval(() => {
         const url = this._getMapUrl();
@@ -87,27 +138,23 @@ class VacuumCard extends HTMLElement {
       delete this._roomSettings[id];
     } else {
       this._selectedRooms.push(id);
-      this._roomSettings[id] = {
-        suction: this._currentSuction,
-        water: this._currentWater,
-        passes: this._passes
-      };
+      this._roomSettings[id] = { suction: this._currentSuction, water: this._currentWater, passes: this._passes };
     }
     this.render();
   }
 
   _applyPreset(presetName) {
     const PRESETS = [
-      { name: "Eco",      icon: "🌿", suction: 1, water: 0 },
+      { name: "Eco", icon: "🌿", suction: 1, water: 0 },
       { name: "Standard", icon: "🏠", suction: 2, water: 1 },
-      { name: "Turbo",    icon: "🚀", suction: 4, water: 0 },
-      { name: "Mocio",    icon: "💧", suction: 2, water: 3 },
+      { name: "Turbo", icon: "🚀", suction: 4, water: 0 },
+      { name: "Mocio", icon: "💧", suction: 2, water: 3 },
     ];
     const preset = PRESETS.find(p => p.name === presetName);
     if (!preset) return;
     this._activePreset = presetName;
     this._currentSuction = preset.suction;
-    this._currentWater   = preset.water;
+    this._currentWater = preset.water;
     this._updateSegButtons();
   }
 
@@ -141,14 +188,11 @@ class VacuumCard extends HTMLElement {
 
   _callService(domain, service, data = {}) {
     if (!this._hass || !this.config.entity) return;
-    const payload = { entity_id: this.config.entity, ...data };
-    this._hass.callService(domain, service, payload);
+    this._hass.callService(domain, service, { entity_id: this.config.entity, ...data });
   }
 
-  // PAN & ZOOM Handlers
   _applyTransform() {
-    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
-    const img = this.shadowRoot.querySelector('#vacuum-map');
+    const wrapper = this.shadowRoot.querySelector('#map-wrapper'), img = this.shadowRoot.querySelector('#vacuum-map');
     if (!wrapper || !img) return;
     const wW = wrapper.clientWidth, wH = wrapper.clientHeight;
     const iW = img.naturalWidth * this._scale, iH = img.naturalHeight * this._scale;
@@ -161,12 +205,9 @@ class VacuumCard extends HTMLElement {
 
   _handleWheel(e) {
     e.preventDefault();
-    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
-    const rect = wrapper.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left - rect.width / 2;
-    const cursorY = e.clientY - rect.top - rect.height / 2;
-    const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
-    const newScale = Math.min(Math.max(0.5, this._scale * zoomFactor), 6);
+    const wrapper = this.shadowRoot.querySelector('#map-wrapper'), rect = wrapper.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left - rect.width / 2, cursorY = e.clientY - rect.top - rect.height / 2;
+    const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15), newScale = Math.min(Math.max(0.5, this._scale * zoomFactor), 6);
     this._pointX = cursorX - (cursorX - this._pointX) * (newScale / this._scale);
     this._pointY = cursorY - (cursorY - this._pointY) * (newScale / this._scale);
     this._scale = newScale;
@@ -180,7 +221,7 @@ class VacuumCard extends HTMLElement {
     const img = this.shadowRoot.querySelector('#vacuum-map');
     if (img) img.style.transition = 'transform 0.3s ease';
     this._applyTransform();
-    setTimeout(() => { const img2 = this.shadowRoot.querySelector('#vacuum-map'); if (img2) img2.style.transition = ''; }, 300);
+    setTimeout(() => { if (this.shadowRoot.querySelector('#vacuum-map')) this.shadowRoot.querySelector('#vacuum-map').style.transition = ''; }, 300);
   }
 
   _handlePointerDown(e) {
@@ -231,12 +272,13 @@ class VacuumCard extends HTMLElement {
     const stateObj = this._hass.states[this.config.entity];
     if (!stateObj) { this.shadowRoot.innerHTML = `<ha-card><div class="not-found">Entity not found: ${this.config.entity}</div></ha-card>`; return; }
 
+    const t = this._getT();
     const battery = stateObj.attributes.battery_level ?? "?", status = stateObj.state;
     let roomsData = this.config.rooms || stateObj.attributes.rooms, roomsArray = [];
     if (Array.isArray(roomsData)) { roomsArray = roomsData; } 
     else if (typeof roomsData === 'object' && roomsData !== null) { roomsArray = Object.entries(roomsData).map(([id, name]) => ({id: id, name: name})); }
 
-    const suctionLabels = {1: "Eco", 2: "Normal", 3: "Forte", 4: "Max"}, waterLabels = {0: "Off", 1: "Basso", 2: "Medio", 3: "Alto"};
+    const suctionLabels = {1: t.eco, 2: t.normal, 3: t.strong, 4: t.max}, waterLabels = {0: t.off, 1: t.low, 2: t.medium, 3: t.high};
     const PRESETS = [ { name: "Eco", icon: "🌿", suction: 1, water: 0 }, { name: "Standard", icon: "🏠", suction: 2, water: 1 }, { name: "Turbo", icon: "🚀", suction: 4, water: 0 }, { name: "Mocio", icon: "💧", suction: 2, water: 3 } ];
 
     let roomsHtml = roomsArray.map(room => {
@@ -251,7 +293,7 @@ class VacuumCard extends HTMLElement {
 
     if (this.shadowRoot.querySelector('ha-card') && this.shadowRoot.querySelector('.header-status')) {
         this.shadowRoot.querySelector('.header-status').innerText = `[${status}] 🔋 ${battery}%`;
-        this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || '<span>No rooms configured</span>';
+        this.shadowRoot.querySelector('.rooms').innerHTML = roomsHtml || `<span>${t.no_rooms}</span>`;
         this._updateSegButtons();
         this.shadowRoot.querySelectorAll('.room-btn').forEach(btn => { btn.addEventListener('click', (e) => this._toggleRoom(e.currentTarget.dataset.id)); });
         return;
@@ -272,13 +314,13 @@ class VacuumCard extends HTMLElement {
         .seg-label { font-size: 0.85em; color: var(--secondary-text-color, #666); margin-bottom: 6px; font-weight: 500; }
         .seg-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
         .seg-btn { padding: 8px 2px; border: 1.5px solid var(--divider-color, #ddd); border-radius: 10px; background: var(--secondary-background-color, #f5f5f5); color: var(--primary-text-color, #333); cursor: pointer; font-size: 1em; text-align: center; line-height: 1.2; transition: all 0.15s ease; }
-        .seg-btn small { display: block; font-size: 0.6em; opacity: 0.8; }
+        .seg-btn small { display: block; font-size: 0.8em; opacity: 0.8; }
         .seg-btn.active { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); font-weight: 600; }
         .presets-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
         .preset-chip { padding: 4px 10px; border-radius: 16px; border: 1.5px solid var(--divider-color, #ddd); background: var(--secondary-background-color, #f5f5f5); color: var(--primary-text-color); cursor: pointer; font-size: 0.85em; transition: all 0.15s; }
         .preset-chip.active { background: var(--primary-color, #03a9f4); color: white; border-color: var(--primary-color, #03a9f4); }
-        .rooms { display: flex; flex-wrap: wrap; gap: 8px; }
-        .room-btn { padding: 8px 12px; border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color); border-radius: 12px; cursor: pointer; color: var(--primary-text-color); display: flex; flex-direction: column; align-items: center; }
+        .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+        .room-btn { padding: 10px 4px; border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color); border-radius: 12px; cursor: pointer; color: var(--primary-text-color); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50px; }
         .room-btn.selected { background: var(--primary-color); color: white; border-color: var(--primary-color); }
         .badge { background: white; color: var(--primary-color); border-radius: 50%; padding: 1px 5px; font-size: 0.8em; font-weight: bold; margin-left: 4px; }
         .room-details { font-size: 0.7em; margin-top: 2px; opacity: 0.9; }
@@ -289,24 +331,23 @@ class VacuumCard extends HTMLElement {
         .toggle-slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.3s; }
         .toggle-switch input:checked + .toggle-slider { background: var(--primary-color, #03a9f4); }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
-        .start-btn { padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; }
-        .help-text { font-size: 0.8em; color: var(--secondary-text-color); margin-bottom: 4px; text-align: center; }
+        .start-btn { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; font-size: 0.9em; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7em; pointer-events: none; }
       </style>
       <ha-card>
-        <div class="header"><span>🤖 Vacuum</span><span class="header-status">[${status}] 🔋 ${battery}%</span></div>
+        <div class="header"><span>🤖 ${t.vacuum}</span><span class="header-status">[${status}] 🔋 ${battery}%</span></div>
         <div class="map-wrapper" id="map-wrapper">
-          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Vacuum Map" />` : '<span>Map unavailable</span>'}
-          <div class="map-hint">${isMobile ? '👌 Pinch zoom · Double-tap reset' : '🖱 Scroll zoom · Double-click reset'}</div>
+          ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
+          <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
         </div>
-        <div class="controls"><button class="icon-btn" id="btn-pause" title="Pause">⏸</button><button class="icon-btn" id="btn-dock" title="Dock">🏠</button><button class="icon-btn" id="btn-locate" title="Locate">📍</button></div>
+        <div class="controls"><button class="icon-btn" id="btn-pause" title="${t.pause}">⏸</button><button class="icon-btn" id="btn-dock" title="${t.dock}">🏠</button><button class="icon-btn" id="btn-locate" title="${t.locate}">📍</button></div>
         <div class="presets-row">${PRESETS.map(p => `<button class="preset-chip ${this._activePreset === p.name ? 'active' : ''}" data-preset="${p.name}">${p.icon} ${p.name}</button>`).join('')}</div>
-        <div class="seg-group"><div class="seg-label">💨 Aspirazione</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>Eco</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>Normal</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>Forte</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>Max</small></button></div></div>
-        <div class="seg-group"><div class="seg-label">💧 Umidità panno</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>Off</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>Basso</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>Medio</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>Alto</small></button></div></div>
-        <div class="seg-group"><div class="seg-label">🔄 Ripetizioni</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
-        <div class="toggle-row"><span>🏔️ Boost tappeti</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
-        <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">Select Rooms:</div><div class="rooms">${roomsHtml || '<span>No rooms configured</span>'}</div></div>
-        <button class="start-btn" id="btn-start">▶ Start Cleaning</button>
+        <div class="seg-group"><div class="seg-label">💨 ${t.suction}</div><div class="seg-buttons" id="suction-seg"><button class="seg-btn ${this._currentSuction===1?'active':''}" data-val="1">🍃<br><small>${t.eco}</small></button><button class="seg-btn ${this._currentSuction===2?'active':''}" data-val="2">💨<br><small>${t.normal}</small></button><button class="seg-btn ${this._currentSuction===3?'active':''}" data-val="3">🌪️<br><small>${t.strong}</small></button><button class="seg-btn ${this._currentSuction===4?'active':''}" data-val="4">🚀<br><small>${t.max}</small></button></div></div>
+        <div class="seg-group"><div class="seg-label">💧 ${t.water}</div><div class="seg-buttons" id="water-seg"><button class="seg-btn ${this._currentWater===0?'active':''}" data-val="0">⭕<br><small>${t.off}</small></button><button class="seg-btn ${this._currentWater===1?'active':''}" data-val="1">💧<br><small>${t.low}</small></button><button class="seg-btn ${this._currentWater===2?'active':''}" data-val="2">💧💧<br><small>${t.medium}</small></button><button class="seg-btn ${this._currentWater===3?'active':''}" data-val="3">💧💧💧<br><small>${t.high}</small></button></div></div>
+        <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
+        <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
+        <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
+        <button class="start-btn" id="btn-start">▶ ${t.start}</button>
       </ha-card>
     `;
     const wrapper = this.shadowRoot.querySelector('#map-wrapper');

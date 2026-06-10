@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tuya Vacuum Local",
+        "description": "Collega il tuo robot aspirapolvere Tuya via LAN. Trova le credenziali con il wizard di tinytuya.",
+        "data": {
+          "device_id":      "ID Dispositivo",
+          "device_ip":      "Indirizzo IP Dispositivo",
+          "device_key":     "Chiave Locale",
+          "device_version": "Versione Protocollo",
+          "tuya_client_id": "Tuya Client ID (opzionale, per la mappa)",
+          "tuya_client_secret": "Tuya Client Secret (opzionale, per la mappa)",
+          "tuya_region":    "Regione Tuya"
+        }
+      }
+    },
+    "error": { "cannot_connect": "Impossibile connettersi al dispositivo. Controlla IP e chiave locale." },
+    "abort": { "already_configured": "Dispositivo già configurato." }
+  }
+}

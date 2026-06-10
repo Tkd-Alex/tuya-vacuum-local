@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tuya Vacuum Local",
+        "description": "Connect your Tuya robot vacuum via LAN. Find credentials with tinytuya wizard.",
+        "data": {
+          "device_id":      "Device ID",
+          "device_ip":      "Device IP Address",
+          "device_key":     "Local Key",
+          "device_version": "Protocol Version",
+          "tuya_client_id": "Tuya Client ID (optional, for map)",
+          "tuya_client_secret": "Tuya Client Secret (optional, for map)",
+          "tuya_region":    "Tuya Region"
+        }
+      }
+    },
+    "error": { "cannot_connect": "Cannot connect to device. Check IP and local key." },
+    "abort": { "already_configured": "Device already configured." }
+  }
+}

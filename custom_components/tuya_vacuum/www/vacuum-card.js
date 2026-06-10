@@ -23,7 +23,14 @@ const LABELS = {
     map_hint_desktop: "🖱 Scroll zoom · Drag pan · Doppio-click reset",
     map_hint_mobile: "👌 Pinch zoom · Drag pan · Doppio-tap reset",
     select_rooms_hint: "Seleziona stanze:",
-    no_rooms: "Nessuna stanza configurata"
+    no_rooms: "Nessuna stanza configurata",
+    maintenance: "Manutenzione & Statistiche",
+    filter: "Filtro",
+    main_brush: "Spazzola rotante",
+    side_brush: "Spazzola laterale",
+    total_area: "Area totale",
+    total_time: "Tempo totale",
+    clean_count: "Sessioni"
   },
   en: {
     vacuum: "Vacuum",
@@ -49,7 +56,14 @@ const LABELS = {
     map_hint_desktop: "🖱 Scroll zoom · Drag pan · Double-click reset",
     map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset",
     select_rooms_hint: "Select Rooms:",
-    no_rooms: "No rooms configured"
+    no_rooms: "No rooms configured",
+    maintenance: "Maintenance & Stats",
+    filter: "Filter",
+    main_brush: "Main Brush",
+    side_brush: "Side Brush",
+    total_area: "Total Area",
+    total_time: "Total Time",
+    clean_count: "Clean Count"
   }
 };
 
@@ -273,6 +287,41 @@ class VacuumCard extends HTMLElement {
   }
   _handleTouchEnd() { this._lastPinchDist = null; this._isPanning = false; }
 
+  _getStatsHtml(t) {
+    if (!this._hass || !this.config.entity) return '';
+    const baseName = this.config.entity.split('.')[1];
+    const states = this._hass.states;
+    
+    const findState = (keywords) => {
+       const key = Object.keys(states).find(k => k.startsWith(`sensor.${baseName}`) && keywords.some(kw => k.includes(kw)));
+       return key ? states[key].state + ' ' + (states[key].attributes.unit_of_measurement || '').trim() : null;
+    };
+
+    const filter = findState(['filter', 'filtro']);
+    const mainBrush = findState(['roll_brush', 'main_brush', 'spazzola_rotante']);
+    const sideBrush = findState(['edge_brush', 'side_brush', 'spazzola_laterale']);
+    const area = findState(['total_clean_area', 'area']);
+    const time = findState(['total_cleaning_time', 'time']);
+    const count = findState(['number_of_cleans', 'count']);
+
+    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) return '';
+
+    return `
+      <details class="stats-accordion">
+        <summary>🔧 ${t.maintenance}</summary>
+        <div class="stats-content">
+          ${filter ? `<div class="stat-item"><ha-icon icon="mdi:air-filter"></ha-icon><span class="stat-label">${t.filter}</span><span class="stat-val">${filter}</span></div>` : ''}
+          ${mainBrush ? `<div class="stat-item"><ha-icon icon="mdi:brush"></ha-icon><span class="stat-label">${t.main_brush}</span><span class="stat-val">${mainBrush}</span></div>` : ''}
+          ${sideBrush ? `<div class="stat-item"><ha-icon icon="mdi:brush-variant"></ha-icon><span class="stat-label">${t.side_brush}</span><span class="stat-val">${sideBrush}</span></div>` : ''}
+          ${(filter||mainBrush||sideBrush) && (area||time||count) ? `<div class="stat-divider"></div>` : ''}
+          ${area ? `<div class="stat-item"><ha-icon icon="mdi:texture-box"></ha-icon><span class="stat-label">${t.total_area}</span><span class="stat-val">${area}</span></div>` : ''}
+          ${time ? `<div class="stat-item"><ha-icon icon="mdi:timer-outline"></ha-icon><span class="stat-label">${t.total_time}</span><span class="stat-val">${time}</span></div>` : ''}
+          ${count ? `<div class="stat-item"><ha-icon icon="mdi:counter"></ha-icon><span class="stat-label">${t.clean_count}</span><span class="stat-val">${count}</span></div>` : ''}
+        </div>
+      </details>
+    `;
+  }
+
   render() {
     if (!this._hass || !this.config.entity) return;
     const stateObj = this._hass.states[this.config.entity];
@@ -361,6 +410,14 @@ class VacuumCard extends HTMLElement {
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
         .start-btn { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; width: 100%; font-size: 0.9em; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7em; pointer-events: none; }
+        .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); }
+        .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
+        .stats-content { padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+        .stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 0.9em; color: var(--primary-text-color); }
+        .stat-item ha-icon { margin-right: 8px; color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+        .stat-label { flex-grow: 1; }
+        .stat-val { font-weight: bold; }
+        .stat-divider { height: 1px; background: var(--divider-color, #eee); margin: 4px 0; }
       </style>
       <ha-card>
         <div class="header">
@@ -382,6 +439,7 @@ class VacuumCard extends HTMLElement {
           <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
           <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
           <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
+          ${this._getStatsHtml(t)}
           <button class="start-btn" id="btn-start">▶ ${t.start}</button>
         </div>
       </ha-card>

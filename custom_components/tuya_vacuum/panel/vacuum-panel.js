@@ -24,7 +24,14 @@ const LABELS = {
     map_hint_mobile: "👌 Pinch zoom · Trascina mappa · Doppio-tap reset",
     set_power_hint: "1. Scegli potenza, poi clicca una stanza",
     select_rooms_hint: "2. Selezione stanze:",
-    no_rooms: "Nessuna stanza configurata"
+    no_rooms: "Nessuna stanza configurata",
+    maintenance: "Manutenzione & Statistiche",
+    filter: "Filtro",
+    main_brush: "Spazzola rotante",
+    side_brush: "Spazzola laterale",
+    total_area: "Area totale",
+    total_time: "Tempo totale",
+    clean_count: "Sessioni"
   },
   en: {
     vacuum: "Tuya Vacuum",
@@ -51,7 +58,14 @@ const LABELS = {
     map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset",
     set_power_hint: "1. Set power & water, then click a room",
     select_rooms_hint: "2. Select Rooms:",
-    no_rooms: "No rooms configured"
+    no_rooms: "No rooms configured",
+    maintenance: "Maintenance & Stats",
+    filter: "Filter",
+    main_brush: "Main Brush",
+    side_brush: "Side Brush",
+    total_area: "Total Area",
+    total_time: "Total Time",
+    clean_count: "Clean Count"
   }
 };
 
@@ -271,6 +285,41 @@ class VacuumPanel extends HTMLElement {
   }
   _handleTouchEnd() { this._lastPinchDist = null; this._isPanning = false; }
 
+  _getStatsHtml(t) {
+    if (!this._hass || !this._config.entity_id) return '';
+    const baseName = this._config.entity_id.split('.')[1];
+    const states = this._hass.states;
+    
+    const findState = (keywords) => {
+       const key = Object.keys(states).find(k => k.startsWith(`sensor.${baseName}`) && keywords.some(kw => k.includes(kw)));
+       return key ? states[key].state + ' ' + (states[key].attributes.unit_of_measurement || '').trim() : null;
+    };
+
+    const filter = findState(['filter', 'filtro']);
+    const mainBrush = findState(['roll_brush', 'main_brush', 'spazzola_rotante']);
+    const sideBrush = findState(['edge_brush', 'side_brush', 'spazzola_laterale']);
+    const area = findState(['total_clean_area', 'area']);
+    const time = findState(['total_cleaning_time', 'time']);
+    const count = findState(['number_of_cleans', 'count']);
+
+    if (!filter && !mainBrush && !sideBrush && !area && !time && !count) return '';
+
+    return `
+      <details class="stats-accordion">
+        <summary>🔧 ${t.maintenance}</summary>
+        <div class="stats-content">
+          ${filter ? `<div class="stat-item"><ha-icon icon="mdi:air-filter"></ha-icon><span class="stat-label">${t.filter}</span><span class="stat-val">${filter}</span></div>` : ''}
+          ${mainBrush ? `<div class="stat-item"><ha-icon icon="mdi:brush"></ha-icon><span class="stat-label">${t.main_brush}</span><span class="stat-val">${mainBrush}</span></div>` : ''}
+          ${sideBrush ? `<div class="stat-item"><ha-icon icon="mdi:brush-variant"></ha-icon><span class="stat-label">${t.side_brush}</span><span class="stat-val">${sideBrush}</span></div>` : ''}
+          ${(filter||mainBrush||sideBrush) && (area||time||count) ? `<div class="stat-divider"></div>` : ''}
+          ${area ? `<div class="stat-item"><ha-icon icon="mdi:texture-box"></ha-icon><span class="stat-label">${t.total_area}</span><span class="stat-val">${area}</span></div>` : ''}
+          ${time ? `<div class="stat-item"><ha-icon icon="mdi:timer-outline"></ha-icon><span class="stat-label">${t.total_time}</span><span class="stat-val">${time}</span></div>` : ''}
+          ${count ? `<div class="stat-item"><ha-icon icon="mdi:counter"></ha-icon><span class="stat-label">${t.clean_count}</span><span class="stat-val">${count}</span></div>` : ''}
+        </div>
+      </details>
+    `;
+  }
+
   _render() {
     if (!this._hass || !this._config.entity_id) return;
     const vacuumState = this._hass.states[this._config.entity_id];
@@ -379,6 +428,14 @@ class VacuumPanel extends HTMLElement {
         .action-btn { padding: 10px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; flex-grow: 1; color: white; text-transform: uppercase; font-size: 0.9em; }
         .btn-start { background: #4caf50; } .btn-pause { background: #ff9800; } .btn-dock { background: #2196f3; } .btn-locate { background: #9c27b0; }
         .map-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; pointer-events: none; }
+        .stats-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); margin-bottom: 16px; }
+        .stats-accordion summary { padding: 12px; font-weight: 500; cursor: pointer; outline: none; user-select: none; display: flex; align-items: center; }
+        .stats-content { padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+        .stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 0.9em; color: var(--primary-text-color); }
+        .stat-item ha-icon { margin-right: 8px; color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+        .stat-label { flex-grow: 1; }
+        .stat-val { font-weight: bold; }
+        .stat-divider { height: 1px; background: var(--divider-color, #eee); margin: 4px 0; }
       </style>
       <div class="container">
         <div class="header">
@@ -401,6 +458,7 @@ class VacuumPanel extends HTMLElement {
             <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
             <div style="font-size: 0.9em; margin-top: 12px; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div>
             <div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div>
+            ${this._getStatsHtml(t)}
             <div class="actions"><button class="action-btn btn-pause" id="btn-pause">⏸ ${t.pause}</button><button class="action-btn btn-start" id="btn-start">▶ ${t.start}</button><button class="action-btn btn-dock" id="btn-dock">🏠 ${t.dock}</button><button class="action-btn btn-locate" id="btn-locate">📍 ${t.locate}</button></div>
           </div>
         </div>

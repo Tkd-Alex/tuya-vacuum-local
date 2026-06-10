@@ -258,6 +258,29 @@ class VacuumPanel extends HTMLElement {
           align-items: center;
           font-size: 1.2em;
         }
+        .header-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .back-btn {
+          background: transparent;
+          border: none;
+          color: white;
+          font-size: 1.2em;
+          cursor: pointer;
+          padding: 4px;
+          margin-right: 8px;
+          line-height: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          transition: background 0.2s;
+        }
+        .back-btn:hover {
+          background: rgba(255,255,255,0.2);
+        }
         .map-wrapper {
           width: 100%;
           background: #333; /* Dark background looks better with transparent maps */
@@ -388,7 +411,10 @@ class VacuumPanel extends HTMLElement {
       </style>
       <div class="container">
         <div class="header">
-          <span>🤖 Tuya Vacuum</span>
+          <div class="header-title">
+            <button class="back-btn" id="btn-back">←</button>
+            <span>🤖 Tuya Vacuum</span>
+          </div>
           <span class="header-status">🔋 ${battery}% [${status}]</span>
         </div>
         <div class="map-wrapper" id="map-wrapper">
@@ -455,6 +481,7 @@ class VacuumPanel extends HTMLElement {
       this.shadowRoot.querySelector('#wat-val').innerText = this._currentWater;
     });
 
+    this.shadowRoot.querySelector('#btn-back').addEventListener('click', () => history.back());
     this.shadowRoot.querySelector('#btn-start').addEventListener('click', () => this._startCleaning());
     this.shadowRoot.querySelector('#btn-pause').addEventListener('click', () => this._callService("vacuum", "pause"));
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));

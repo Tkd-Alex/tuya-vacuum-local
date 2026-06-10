@@ -411,7 +411,8 @@ class VacuumPanel extends HTMLElement {
         .header { padding: 16px; background: var(--primary-color, #03a9f4); color: var(--text-primary-color, white); display: flex; justify-content: space-between; align-items: center; font-size: 1.2em; }
         .header-title { display: flex; align-items: center; gap: 8px; }
         .header-actions { display: flex; align-items: center; gap: 12px; }
-        .back-btn { background: transparent; border: none; color: white; font-size: 1.2em; cursor: pointer; padding: 4px; margin-right: 8px; border-radius: 50%; display: flex; align-items: center; }
+        .back-btn { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.2em; cursor: pointer; padding: 6px 10px; margin-right: 8px; border-radius: 8px; display: flex; align-items: center; font-weight: bold; }
+        .back-btn:hover { background: rgba(255,255,255,0.4); }
         .icon-btn { background: rgba(255,255,255,0.2); border: none; cursor: pointer; font-size: 18px; color: white; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
         .icon-btn:hover { background: rgba(255,255,255,0.4); }
         .interactive-area { display: flex; flex-direction: column; transition: opacity 0.3s; }
@@ -501,7 +502,13 @@ class VacuumPanel extends HTMLElement {
     this.shadowRoot.querySelector('#water-seg').addEventListener('click', (e) => { const btn = e.target.closest('.seg-btn'); if (!btn) return; this._currentWater = parseInt(btn.dataset.val); this._activePreset = null; this._updateSegButtons(); });
     this.shadowRoot.querySelector('#passes-seg').addEventListener('click', (e) => { const btn = e.target.closest('.seg-btn'); if (!btn) return; this._passes = parseInt(btn.dataset.val); this.shadowRoot.querySelectorAll('#passes-seg .seg-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.val) === this._passes); }); });
     this.shadowRoot.querySelector('#carpet-boost').addEventListener('change', (e) => { this._carpetBoost = e.target.checked; });
-    this.shadowRoot.querySelector('#btn-back').addEventListener('click', () => history.back());
+    this.shadowRoot.querySelector('#btn-back').addEventListener('click', () => {
+      if (window.history.length > 1) {
+        history.back();
+      } else {
+        window.location.href = '/';
+      }
+    });
     this.shadowRoot.querySelector('#btn-start').addEventListener('click', () => this._startCleaning());
     this.shadowRoot.querySelector('#btn-pause').addEventListener('click', () => this._callService("vacuum", "pause"));
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));

@@ -109,11 +109,17 @@ def _error_img(msg: str, W: int = 512, H: int = 512) -> bytes:
     img.save(buf, format="PNG")
     return buf.getvalue()
 
+# Tuya vacuum coordinate system.
+# Standard A (older firmware): 1 metre = 100 units, upc = res
+# Standard B (newer firmware): 1 metre = 200 units, upc = res * 2
+# Change this constant if the scale bar or room clicks are off by factor 2.
+_UNITS_PER_CM = 2
+
 def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
                       scale: int = 4) -> tuple[bytes, dict]:
     """Decode LZ4 map binary and return (PNG bytes, map_data dict)."""
     map_data = {"calibration_points": [], "rooms": {}}
-    
+
     try:
         if not layout_raw or len(layout_raw) < 24:
             return _error_img("Invalid map data (too short)"), map_data
@@ -129,9 +135,10 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
             return _error_img(f"Invalid dimensions: {W}x{H}"), map_data
 
         # Calculate calibration points for Xiaomi Map Card
-        # 200 units = 1 meter. Resolution is in cm/cell (usually 5).
-        # So units_per_cell = res * 2
-        upc = res * 2
+        upc = res * _UNITS_PER_CM
+
+        map_data["debug"] = {"W": W, "H": H, "ox": ox, "oy": oy, "res": res, "upc": upc}
+
         map_data["calibration_points"] = [
             {"map": {"x": 0,           "y": 0},           "vacuum": {"x": -ox,             "y": -oy}},
             {"map": {"x": W * scale,   "y": 0},           "vacuum": {"x": (W * upc) - ox,  "y": -oy}},

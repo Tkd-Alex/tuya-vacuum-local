@@ -141,7 +141,7 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         # fall back to an empty string so the JS debug message is informative.
         tuya_local_base = ""
         if tuya_local_entity and "." in tuya_local_entity:
-            candidate = tuya_local_entity.split(".")[1]
+            candidate = tuya_local_entity.replace("vacuum.", "").rstrip("_0123456789").rstrip("_")
             if self.hass.states.get(tuya_local_entity):
                 tuya_local_base = candidate
             else:

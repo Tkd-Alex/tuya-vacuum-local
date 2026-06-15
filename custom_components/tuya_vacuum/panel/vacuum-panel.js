@@ -21,7 +21,9 @@ const LABELS = {
     medium: "Medio",
     high: "Alto",
     map_hint_desktop: "🖱 Scroll zoom · Trascina · Doppio-click reset · Click stanza = seleziona",
+    map_hint_desktop_norooms: "🖱 Scroll zoom · Trascina · Doppio-click reset",
     map_hint_mobile: "👌 Pinch zoom · Trascina · Doppio-tap reset · Tap stanza = seleziona",
+    map_hint_mobile_norooms: "👌 Pinch zoom · Trascina · Doppio-tap reset",
     set_power_hint: "1. Scegli potenza, poi clicca una stanza",
     select_rooms_hint: "2. Selezione stanze:",
     no_rooms: "Nessuna stanza configurata",
@@ -55,7 +57,9 @@ const LABELS = {
     medium: "Medium",
     high: "High",
     map_hint_desktop: "🖱 Scroll zoom · Drag pan · Double-click reset · Click room = select",
+    map_hint_desktop_norooms: "🖱 Scroll zoom · Drag pan · Double-click reset",
     map_hint_mobile: "👌 Pinch zoom · Drag pan · Double-tap reset · Tap room = select",
+    map_hint_mobile_norooms: "👌 Pinch zoom · Drag pan · Double-tap reset",
     set_power_hint: "1. Set power & water, then click a room",
     select_rooms_hint: "2. Select Rooms:",
     no_rooms: "No rooms configured",
@@ -197,33 +201,72 @@ class VacuumPanel extends HTMLElement {
   }
 
   _handleMapClick(e) {
-    return; // room-from-map selection disabled pending calibration fix
     const mapRooms = this._getMapRooms();
-    if (!mapRooms) return;
+    if (!mapRooms || Object.keys(mapRooms).length === 0) return;
+
     const img = this.shadowRoot.querySelector('#vacuum-map');
-    const wrapper = this.shadowRoot.querySelector('#map-wrapper');
-    if (!img || !img.naturalWidth || !wrapper) return;
+    if (!img || !img.naturalWidth) return;
 
-    const rect = wrapper.getBoundingClientRect();
-    const wW = rect.width, wH = rect.height;
-    // Invert the CSS transform: translate(pointX, pointY) scale(scale) around center
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-    const imgX = (clickX - wW / 2 - this._pointX) / this._scale + img.naturalWidth / 2;
-    const imgY = (clickY - wH / 2 - this._pointY) / this._scale + img.naturalHeight / 2;
+    // Dimensione visuale reale dell'immagine nel DOM (dopo object-fit e scaling CSS)
+    const imgRect = img.getBoundingClientRect();
 
-    // Find the closest room center within a reasonable radius (50px in image space)
-    // Pick closest room; threshold scales with zoom so a tight click stays precise
-    const MAX_DIST = Math.max(40, 80 / this._scale);
+    // Coordinata del click relativa all'angolo top-left dell'immagine visuale
+    const relX = e.clientX - imgRect.left;
+    const relY = e.clientY - imgRect.top;
+
+    // Proporzione pixel_visuale / pixel_naturale
+    // Questo tiene conto sia del ridimensionamento object-fit che dello zoom CSS
+    const scaleX = img.naturalWidth  / imgRect.width;
+    const scaleY = img.naturalHeight / imgRect.height;
+
+    // Coordinata in pixel dell'immagine originale (stessa scala di pixel_x/pixel_y in map_data)
+    const imgX = relX * scaleX;
+    const imgY = relY * scaleY;
+
+    // Trova la stanza più vicina entro soglia (in pixel dell'immagine originale)
+    // La soglia scala con lo zoom: più sei zoomato, più devi essere preciso
+    const MAX_DIST = Math.max(30, 60 / this._scale);
     let bestId = null, bestDist = Infinity;
     for (const [id, room] of Object.entries(mapRooms)) {
-      const dx = imgX - room.pixel_x, dy = imgY - room.pixel_y;
+      if (room.pixel_x === undefined || room.pixel_y === undefined) continue;
+      const dx = imgX - room.pixel_x;
+      const dy = imgY - room.pixel_y;
       const dist = Math.hypot(dx, dy);
       if (dist < bestDist) { bestDist = dist; bestId = id; }
     }
+    
+    if (this._config.debug_map) {
+      console.log(`Map click: DOM(${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}) → img(${imgX.toFixed(1)},${imgY.toFixed(1)})`);
+      this._showDebugDot(imgX, imgY, imgRect, scaleX, scaleY);
+    }
+    
     if (bestId !== null && bestDist <= MAX_DIST) {
       this._toggleRoom(bestId);
     }
+  }
+
+  _showDebugDot(imgX, imgY, imgRect, scaleX, scaleY) {
+    let dot = this.shadowRoot.querySelector('#debug-dot');
+    if (!dot) {
+      dot = document.createElement('div');
+      dot.id = 'debug-dot';
+      dot.style.position = 'absolute';
+      dot.style.width = '8px';
+      dot.style.height = '8px';
+      dot.style.background = 'red';
+      dot.style.borderRadius = '50%';
+      dot.style.transform = 'translate(-50%, -50%)';
+      dot.style.pointerEvents = 'none';
+      dot.style.zIndex = '100';
+      const wrapper = this.shadowRoot.querySelector('#map-wrapper');
+      if (wrapper) wrapper.appendChild(dot);
+    }
+    const wrapperRect = this.shadowRoot.querySelector('#map-wrapper').getBoundingClientRect();
+    const mapLeftInWrapper = imgRect.left - wrapperRect.left;
+    const mapTopInWrapper = imgRect.top - wrapperRect.top;
+    
+    dot.style.left = (mapLeftInWrapper + (imgX / scaleX)) + 'px';
+    dot.style.top = (mapTopInWrapper + (imgY / scaleY)) + 'px';
   }
 
   _toggleRoom(id) {
@@ -650,7 +693,6 @@ class VacuumPanel extends HTMLElement {
         </div>
         <div class="status-bar">${this._statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t)}</div>
         <div class="interactive-area">
-          ${this._pendingAction ? `<div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>` : ''}
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
@@ -704,6 +746,8 @@ class VacuumPanel extends HTMLElement {
     this.shadowRoot.querySelector('#btn-dock').addEventListener('click', () => this._callService("vacuum", "return_to_base"));
     this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
     this.shadowRoot.querySelector('#btn-lock').addEventListener('click', () => { this._locked = !this._locked; this._render(); });
+
+    this._updateActionButtons();
   }
 }
 customElements.define("vacuum-panel", VacuumPanel);

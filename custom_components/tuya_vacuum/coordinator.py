@@ -82,17 +82,41 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
 
     def send_sequence(self, sequence: list) -> None:
         """Execute a sequence of DP commands over a single persistent connection."""
+        # Request TuyaLocal to temporarily release the socket
+        tuya_local_entity = self._config.get("tuya_local_entity")
+        if tuya_local_entity:
+            from homeassistant.helpers import entity_registry as er
+            import asyncio
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(tuya_local_entity)
+            if entry and entry.config_entry_id:
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.hass.config_entries.async_reload(entry.config_entry_id),
+                        self.hass.loop
+                    ).result(timeout=3)
+                    time.sleep(1.0)  # wait for TuyaLocal to release the socket
+                except Exception as e:
+                    _LOGGER.debug("Failed to reload TuyaLocal: %s", e)
+
         d = self._get_device(persistent=True)
         try:
             for item in sequence:
-                if isinstance(item, dict):
-                    result = d.set_multiple_values(item)
-                else:
-                    dp, val = item
-                    result = d.set_value(dp, val)
-                if result and result.get("Error"):
-                    _LOGGER.warning("send_sequence step %s error: %s", item, result)
-                time.sleep(0.15)
+                for attempt in range(3):
+                    if isinstance(item, dict):
+                        result = d.set_multiple_values(item)
+                    else:
+                        dp, val = item
+                        result = d.set_value(dp, val)
+                    
+                    if not result or not result.get("Error"):
+                        break
+                        
+                    if attempt == 2:
+                        _LOGGER.warning("send_sequence step %s error after 3 attempts: %s", item, result)
+                    else:
+                        time.sleep(0.1)
+                time.sleep(0.08)
         except Exception as exc:
             _LOGGER.error("send_sequence failed: %s", exc)
             raise

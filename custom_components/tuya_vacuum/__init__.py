@@ -55,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "_panel_custom": {
                     "name": "vacuum-panel",
                     "module_url": "/tuya_vacuum_panel/vacuum-panel.js",
+
                 },
                 "entity_id": vacuum_entity_id,
                 "rooms": rooms,

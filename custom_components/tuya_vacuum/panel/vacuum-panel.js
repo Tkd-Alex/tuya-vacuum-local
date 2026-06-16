@@ -236,6 +236,10 @@ class VacuumPanel extends HTMLElement {
     }
     
     if (this._config.debug_map) {
+      const mapState = this._hass.states[this._config.map_entity];
+      const debug = mapState?.attributes?.debug || {};
+      console.log("Raw room names from binary:", debug.raw_room_names);
+      console.log("Configured rooms (DP15 room_id):", debug.configured_rooms);
       console.log(`Map click: DOM(${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}) → img(${imgX.toFixed(1)},${imgY.toFixed(1)})`);
       this._showDebugDot(imgX, imgY, imgRect, scaleX, scaleY);
     }

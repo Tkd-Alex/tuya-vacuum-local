@@ -212,7 +212,8 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         """Decode LZ4 map and render PNG — returns (PNG bytes, map_data dict)."""
         try:
             from .map_decoder import decode_and_render
-            return decode_and_render(layout_raw, path_raw)
+            configured_rooms = self._config.get("rooms", {})
+            return decode_and_render(layout_raw, path_raw, configured_rooms=configured_rooms)
         except Exception as e:
             _LOGGER.error("Map render error: %s", e)
             return None, None

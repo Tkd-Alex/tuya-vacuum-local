@@ -116,7 +116,8 @@ def _error_img(msg: str, W: int = 512, H: int = 512) -> bytes:
 _UNITS_PER_CM = 2
 
 def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
-                      scale: int = 4) -> tuple[bytes, dict]:
+                      scale: int = 4,
+                      configured_rooms: dict | None = None) -> tuple[bytes, dict]:
     """Decode LZ4 map binary and return (PNG bytes, map_data dict)."""
     map_data = {"calibration_points": [], "rooms": {}}
 
@@ -155,16 +156,24 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
         room_section = dec[W*H:]
         room_names   = _room_names(room_section)
 
+        map_data["debug"]["raw_room_names"] = dict(room_names)
+        map_data["debug"]["configured_rooms"] = configured_rooms or {}
+
         # Create image
         img = Image.new("RGBA", (W, H))
         pixels = [_colour(v) for v in grid]
         img.putdata(pixels)
-        
+
         # Resize and draw
         img  = img.resize((W*scale, H*scale), Image.NEAREST)
         draw = ImageDraw.Draw(img)
         font = _font(18)
         fsm  = _font(13)
+
+        name_to_configured_id = {}
+        if configured_rooms:
+            for cfg_id, cfg_name in configured_rooms.items():
+                name_to_configured_id[cfg_name.strip().lower()] = cfg_id
 
         # Room labels
         for idx, name in room_names.items():
@@ -176,12 +185,17 @@ def decode_and_render(layout_raw: bytes, path_raw: bytes | None = None,
                 rows=[p[0] for p in pos]; cols=[p[1] for p in pos]
                 cr,cc = sum(rows)//len(rows), sum(cols)//len(cols)
                 px,py = cc*scale+scale//2, cr*scale+scale//2
-                
+
                 # Expose room center in robot coordinates
                 cx_robot = (cc * upc) - ox
                 cy_robot = (cr * upc) - oy
-                map_data["rooms"][str(idx)] = {
-                    "name": name, 
+
+                matched_id = name_to_configured_id.get(name.strip().lower())
+                output_id = matched_id if matched_id is not None else str(idx)
+
+                map_data["rooms"][output_id] = {
+                    "name": configured_rooms.get(output_id, name) if configured_rooms else name,
+                    "map_name": name,
                     "x": cx_robot, 
                     "y": cy_robot,
                     "pixel_x": px,

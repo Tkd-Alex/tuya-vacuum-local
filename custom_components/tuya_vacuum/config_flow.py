@@ -82,18 +82,20 @@ class TuyaVacuumOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
         
         # Get existing rooms or defaults
-        rooms = self._entry.data.get("rooms", {})
+        rooms = self._entry.options.get("rooms", self._entry.data.get("rooms", {}))
         
         schema = vol.Schema({
-            vol.Optional("tuya_local_entity", default=self._entry.options.get("tuya_local_entity", "")): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="vacuum", integration="tuya_local")
+            vol.Optional("tuya_local_entity", 
+                default=self._entry.options.get("tuya_local_entity", self._entry.data.get("tuya_local_entity", ""))): 
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="vacuum", integration="tuya_local")
             ),
             vol.Optional(CONF_CLIENT_ID,
-                default=self._entry.data.get(CONF_CLIENT_ID, "")): str,
+                default=self._entry.options.get(CONF_CLIENT_ID, self._entry.data.get(CONF_CLIENT_ID, ""))): str,
             vol.Optional(CONF_CLIENT_SECRET,
-                default=self._entry.data.get(CONF_CLIENT_SECRET, "")): str,
+                default=self._entry.options.get(CONF_CLIENT_SECRET, self._entry.data.get(CONF_CLIENT_SECRET, ""))): str,
             vol.Optional(CONF_REGION,
-                default=self._entry.data.get(CONF_REGION, "eu")):
+                default=self._entry.options.get(CONF_REGION, self._entry.data.get(CONF_REGION, "eu"))):
                 vol.In(["eu", "us", "cn", "in"]),
             
             # Room name mapping (ID 0-4)

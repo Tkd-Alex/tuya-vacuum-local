@@ -183,24 +183,34 @@ The wizard creates `snapshot.json` with your `device_id`, `device_ip`, and `loca
 
 ### Step 2 — Capture room templates
 
-Room templates encode per-room structural data stored in the robot's firmware.
-They **must be captured from your specific device**.
+Room templates encode per-room structural data stored in the robot's firmware. They **must be captured from your specific device** before you can use room-specific cleaning. If you try to clean rooms without capturing their templates first, Home Assistant will block the command with an error to prevent the robot from re-mapping your house.
 
-```bash
-# Terminal 1: start listener
-python vacuum_listener.py
+There are two ways to capture templates:
 
-# Terminal 2: use Tuya app to start single-room clean for each room
-# In listener output, look for cmd=0x51 lines and copy the hex strings
-```
+#### Method A — Home Assistant UI (Recommended & Easiest)
+1. Go to the **Tuya Vacuum** panel in the Home Assistant sidebar (or your Lovelace card).
+2. Expand the **⚙️ Room Calibration** section.
+3. Click **Start Capture** (Avvia cattura). A pulsing orange banner will show a 5-minute countdown.
+4. Open the official **Tuya Smart / Smart Life** app on your phone.
+5. Start a single-room clean for **each room, one at a time** (e.g., select Room 1, click Clean, let the robot start, stop it/send it back, then repeat for Room 2).
+6. As you start each room, the Home Assistant UI checklist will update in real-time showing a green checkbox (**✅ Calibrated**) next to that room.
+7. Once all rooms are calibrated, click **Stop Capture** (Ferma cattura). The templates are now automatically saved in your integration options!
 
-Add to `config.json`:
-```json
-"room_templates": {
-  "0": "AA 00 0D 51 01 01 00 05 00 ...",
-  "1": "AA 00 0D 51 01 01 01 05 00 ..."
-}
-```
+#### Method B — Manual (Terminal CLI)
+Use this if you are using the CLI script (`vacuum_cmd.py`) without Home Assistant:
+1. Open a terminal and run the passive monitor:
+   ```bash
+   python vacuum_listener.py
+   ```
+2. Open the official **Tuya** app on your phone and clean **one room at a time**.
+3. In the listener terminal output, look for lines starting with `cmd=0x51` (under `DP15`). Copy the hex string of the captured frame.
+4. Open `config.json` and paste the hex strings under the `room_templates` section:
+   ```json
+   "room_templates": {
+     "0": "AA 00 0D 51 01 01 00 05 00 ...",
+     "1": "AA 00 0D 51 01 01 01 05 00 ..."
+   }
+   ```
 
 ### Step 3 — Discover room IDs
 

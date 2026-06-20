@@ -30,7 +30,12 @@ const LABELS = {
     side_brush: "Spazzola laterale",
     total_area: "Area totale",
     total_time: "Tempo totale",
-    clean_count: "Sessioni"
+    clean_count: "Sessioni",
+    room_calibration: "Calibrazione stanze",
+    start_capture: "Avvia cattura",
+    stop_capture: "Ferma cattura",
+    capture_instructions: "Avvia la cattura, poi pulisci una stanza alla volta dall'app Tuya per registrarne i dati.",
+    capture_active: "Cattura attiva! Pulisci una stanza alla volta dall'app Tuya."
   },
   en: {
     vacuum: "Vacuum",
@@ -63,7 +68,12 @@ const LABELS = {
     side_brush: "Side Brush",
     total_area: "Total Area",
     total_time: "Total Time",
-    clean_count: "Clean Count"
+    clean_count: "Clean Count",
+    room_calibration: "Room Calibration",
+    start_capture: "Start Capture",
+    stop_capture: "Stop Capture",
+    capture_instructions: "Start capture, then clean one room at a time from the official Tuya app to record its data.",
+    capture_active: "Capture active! Clean one room at a time from the Tuya app."
   }
 };
 
@@ -90,6 +100,17 @@ class VacuumCard extends HTMLElement {
     this._pendingAction = null;
     this._pendingTimer = null;
     this._prevStatus = null;
+  }
+
+  disconnectedCallback() {
+    if (this._captureTimer) {
+      clearInterval(this._captureTimer);
+      this._captureTimer = null;
+    }
+    if (this._mapTimer) {
+      clearInterval(this._mapTimer);
+      this._mapTimer = null;
+    }
   }
 
   setConfig(config) {
@@ -487,6 +508,63 @@ class VacuumCard extends HTMLElement {
     `;
   }
 
+  _getCalibrationHtml(t) {
+    if (!this._hass || !this.config.entity) return '';
+    const stateObj = this._hass.states[this.config.entity];
+    if (!stateObj || !stateObj.attributes) return '';
+
+    const captured = stateObj.attributes.room_templates_captured || [];
+    const captureActive = stateObj.attributes.room_capture_active || false;
+    const remaining = stateObj.attributes.room_capture_remaining || 0;
+
+    const roomsData = this.config.rooms || stateObj.attributes.rooms || {};
+    let roomsArray = [];
+    if (Array.isArray(roomsData)) {
+      roomsArray = roomsData;
+    } else if (typeof roomsData === 'object' && roomsData !== null) {
+      roomsArray = Object.entries(roomsData).map(([id, name]) => ({ id: id, name: name }));
+    }
+
+    if (roomsArray.length === 0) return '';
+
+    let roomsStatusHtml = roomsArray.map(room => {
+      const isCaptured = captured.includes(room.id);
+      return `
+        <span class="room-status-badge ${isCaptured ? 'captured' : 'missing'}">
+          ${isCaptured ? '✅' : '⚠️'} ${room.name}
+        </span>
+      `;
+    }).join('');
+
+    let captureButton = '';
+    if (captureActive) {
+      const min = Math.floor(remaining / 60);
+      const sec = remaining % 60;
+      const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
+      captureButton = `
+        <div class="capture-active-container">
+          <div class="capture-banner">${t.capture_active} (${timeStr})</div>
+          <button class="calibration-btn btn-stop-capture" id="btn-stop-capture">${t.stop_capture}</button>
+        </div>
+      `;
+    } else {
+      captureButton = `
+        <button class="calibration-btn btn-start-capture" id="btn-start-capture">${t.start_capture}</button>
+      `;
+    }
+
+    return `
+      <details class="stats-accordion calibration-accordion">
+        <summary>⚙️ ${t.room_calibration}</summary>
+        <div class="stats-content">
+          <div class="calibration-instruction">${t.capture_instructions}</div>
+          <div class="rooms-status-list">${roomsStatusHtml}</div>
+          ${captureButton}
+        </div>
+      </details>
+    `;
+  }
+
   render() {
     if (!this._hass || !this.config.entity) return;
     const stateObj = this._hass.states[this.config.entity];
@@ -494,6 +572,34 @@ class VacuumCard extends HTMLElement {
 
     const t = this._getT();
     const battery = stateObj.attributes.battery_level ?? "?", status = stateObj.state;
+
+    const captureActive = stateObj.attributes.room_capture_active || false;
+    const remaining = stateObj.attributes.room_capture_remaining || 0;
+
+    if (captureActive) {
+      this._captureCountdown = remaining;
+      if (!this._captureTimer) {
+        this._captureTimer = setInterval(() => {
+          this._captureCountdown--;
+          if (this._captureCountdown <= 0) {
+            clearInterval(this._captureTimer);
+            this._captureTimer = null;
+          }
+          const banner = this.shadowRoot.querySelector('.capture-banner');
+          if (banner) {
+            const min = Math.floor(this._captureCountdown / 60);
+            const sec = this._captureCountdown % 60;
+            const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
+            banner.innerText = `${t.capture_active} (${timeStr})`;
+          }
+        }, 1000);
+      }
+    } else {
+      if (this._captureTimer) {
+        clearInterval(this._captureTimer);
+        this._captureTimer = null;
+      }
+    }
 
     const tuya_local_base = stateObj.attributes.tuya_local_base;
     const tuyaState = (() => {
@@ -638,6 +744,24 @@ class VacuumCard extends HTMLElement {
         .stat-label { flex-grow: 1; }
         .stat-val { font-weight: bold; }
         .stat-divider { height: 1px; background: var(--divider-color, #eee); margin: 4px 0; }
+        .calibration-accordion { margin-top: 8px; border: 1px solid var(--divider-color, #eee); border-radius: 8px; overflow: hidden; background: var(--secondary-background-color, #f9f9f9); }
+        .calibration-instruction { font-size: 0.85em; color: var(--secondary-text-color, #666); line-height: 1.3; margin-bottom: 10px; }
+        .rooms-status-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .room-status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: 500; border: 1px solid var(--divider-color, #ddd); }
+        .room-status-badge.captured { background: rgba(76, 175, 80, 0.1); color: #2e7d32; border-color: rgba(76, 175, 80, 0.3); }
+        .room-status-badge.missing { background: rgba(255, 152, 0, 0.1); color: #ef6c00; border-color: rgba(255, 152, 0, 0.3); }
+        .calibration-btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.9em; transition: background-color 0.2s; }
+        .btn-start-capture { background: var(--primary-color, #03a9f4); color: white; }
+        .btn-start-capture:hover { filter: brightness(1.1); }
+        .btn-stop-capture { background: #e53935; color: white; }
+        .btn-stop-capture:hover { filter: brightness(1.1); }
+        .capture-active-container { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+        .capture-banner { background: #ff9800; color: white; padding: 8px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 500; text-align: center; animation: pulse 2s infinite; }
+        @keyframes pulse {
+          0% { opacity: 0.9; }
+          50% { opacity: 0.6; }
+          100% { opacity: 0.9; }
+        }
       </style>
       <ha-card>
         <div class="header">
@@ -668,6 +792,7 @@ class VacuumCard extends HTMLElement {
           <div class="seg-group"><div class="seg-label">🔄 ${t.passes}</div><div class="seg-buttons" id="passes-seg" style="grid-template-columns: repeat(3, 1fr);"><button class="seg-btn ${this._passes===1?'active':''}" data-val="1">1×</button><button class="seg-btn ${this._passes===2?'active':''}" data-val="2">2×</button><button class="seg-btn ${this._passes===3?'active':''}" data-val="3">3×</button></div></div>
           <div class="toggle-row"><span>🏔️ ${t.carpet_boost}</span><label class="toggle-switch"><input type="checkbox" id="carpet-boost" ${this._carpetBoost ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
           <div><div style="font-size: 0.9em; margin-bottom: 8px; color: var(--secondary-text-color);">${t.select_rooms_hint}</div><div class="rooms">${roomsHtml || `<span>${t.no_rooms}</span>`}</div></div>
+          ${this._getCalibrationHtml(t)}
           ${this._getStatsHtml(t)}
           <button class="start-btn ${this._pendingAction==='start'?'pending':''}" id="btn-start" ${this._selectedRooms.length===0||(this._pendingAction&&this._pendingAction!=='start')?'disabled':''}>▶ ${t.start}</button>
         </div>
@@ -697,6 +822,23 @@ class VacuumCard extends HTMLElement {
     this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
     this.shadowRoot.querySelector('#btn-lock').addEventListener('click', () => { this._locked = !this._locked; this.render(); });
 
+    const startCaptureBtn = this.shadowRoot.querySelector('#btn-start-capture');
+    if (startCaptureBtn) {
+      startCaptureBtn.addEventListener('click', () => {
+        this._hass.callService("tuya_vacuum", "start_room_capture", {
+          entity_id: this.config.entity
+        });
+      });
+    }
+    const stopCaptureBtn = this.shadowRoot.querySelector('#btn-stop-capture');
+    if (stopCaptureBtn) {
+      stopCaptureBtn.addEventListener('click', () => {
+        this._hass.callService("tuya_vacuum", "stop_room_capture", {
+          entity_id: this.config.entity
+        });
+      });
+    }
+ 
     this._updateActionButtons();
   }
 }

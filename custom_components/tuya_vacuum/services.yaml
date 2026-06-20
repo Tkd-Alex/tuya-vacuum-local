@@ -21,3 +21,49 @@ clean_room_by_name:
 refresh_map:
   name: Refresh Map
   description: Forces an immediate map update from Tuya Cloud.
+
+start_room_capture:
+  name: Start Room Template Capture
+  description: >
+    Listens passively for room-clean commands sent by the official Tuya app
+    to capture device-specific room frame templates (b1/b2 bytes).
+    Start this, then clean ONE room at a time from the Tuya app within the
+    capture window.
+  fields:
+    entity_id:
+      name: Vacuum Entity
+      description: The vacuum entity to calibrate.
+      required: false
+      selector:
+        entity:
+          domain: vacuum
+    config_entry_id:
+      name: Config Entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+    duration:
+      name: Duration
+      description: Capture window in seconds (default 300 = 5 minutes).
+      default: 300
+      required: false
+      selector:
+        number:
+          min: 60
+          max: 1800
+          unit_of_measurement: seconds
+
+stop_room_capture:
+  name: Stop Room Template Capture
+  description: Stops the active room template capture session.
+  fields:
+    entity_id:
+      name: Vacuum Entity
+      description: The vacuum entity whose calibration to stop.
+      required: false
+      selector:
+        entity:
+          domain: vacuum
+    config_entry_id:
+      name: Config Entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false

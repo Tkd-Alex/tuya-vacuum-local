@@ -45,6 +45,10 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         self._token_cache  = {"token": None, "expiry": 0.0}
         self._last_map_refresh = 0.0
         self._last_status      = "unknown"
+        self.capture_active    = False
+        self.capture_end_time  = 0.0
+        self._captured_templates = {}
+        self._capture_thread   = None
 
     # ── Cloud-based polling ───────────────────────────────────────
 
@@ -234,3 +238,123 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             self._map_image = img
             self._map_data = map_data
             _LOGGER.info("Map updated (%d bytes)", len(img))
+
+    def start_capture_session(self, duration_seconds: int = 300) -> None:
+        """Start the passive listening thread to capture room templates."""
+        if self.capture_active:
+            _LOGGER.warning("Capture session already active")
+            return
+
+        self.capture_active = True
+        self.capture_end_time = time.time() + duration_seconds
+        self._captured_templates = {}
+
+        import threading
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop,
+            args=(duration_seconds,),
+            name="tuya_vacuum_capture"
+        )
+        self._capture_thread.start()
+
+    def stop_capture_session(self) -> None:
+        """Stop the active capture session."""
+        self.capture_active = False
+
+    def _capture_loop(self, duration_seconds: int) -> None:
+        """Passive receiving loop running in a background thread."""
+        _LOGGER.info("Starting room template capture session for %d seconds", duration_seconds)
+        
+        # Request TuyaLocal to temporarily release the socket
+        tuya_local_entity = self._config.get("tuya_local_entity")
+        if tuya_local_entity:
+            from homeassistant.helpers import entity_registry as er
+            import asyncio
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(tuya_local_entity)
+            if entry and entry.config_entry_id:
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.hass.config_entries.async_reload(entry.config_entry_id),
+                        self.hass.loop
+                    ).result(timeout=3)
+                    time.sleep(1.0)  # wait for TuyaLocal to release the socket
+                except Exception as e:
+                    _LOGGER.debug("Failed to reload TuyaLocal: %s", e)
+
+        d = self._get_device(persistent=True)
+        # Set socketTimeout to 1s to react quickly to stop signal
+        d.set_socketTimeout(1)
+        start = time.time()
+        try:
+            while self.capture_active and (time.time() - start < duration_seconds):
+                try:
+                    data = d.receive()
+                    if data and "dps" in data and "15" in data["dps"]:
+                        val = data["dps"]["15"]
+                        raw = base64.b64decode(val)
+                        templates = self._extract_templates(raw)
+                        if templates:
+                            self._captured_templates.update(templates)
+                            _LOGGER.info("Captured room templates: %s", templates)
+                            # Triggers a state update on the vacuum entity so the UI gets immediate feedback
+                            self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
+                except Exception as e:
+                    # Ignore socket timeout exceptions or other connection issues
+                    _LOGGER.debug("Data receiving loop check: %s", e)
+                time.sleep(0.1)
+        finally:
+            self.capture_active = False
+            d.close()
+            _LOGGER.info("Capture session finished. Captured templates: %s", self._captured_templates)
+            
+            # Save the captured templates to the config entry options
+            if self._captured_templates:
+                import asyncio
+                asyncio.run_coroutine_threadsafe(
+                    self._async_save_captured_templates(),
+                    self.hass.loop
+                )
+            else:
+                # Trigger one final update list to clear active state in UI
+                self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
+
+    def _extract_templates(self, raw_bytes: bytes) -> dict[str, str]:
+        """Extract individual room template frames from a CMD 0x51 frame."""
+        templates = {}
+        i = 0
+        while i < len(raw_bytes):
+            if raw_bytes[i] == 0xAA and i + 3 < len(raw_bytes):
+                length = (raw_bytes[i+1] << 8) | raw_bytes[i+2]
+                end = i + 3 + length
+                if end <= len(raw_bytes):
+                    fb = raw_bytes[i:end]
+                    cmd = fb[3]
+                    if cmd == 0x51 and len(fb) >= 6:
+                        num_rooms = fb[5]
+                        for r_idx in range(num_rooms):
+                            block_start = 6 + r_idx * 10
+                            block_end = block_start + 10
+                            if block_end <= len(fb):
+                                block = fb[block_start:block_end]
+                                room_id = block[0]
+                                single_room_payload = bytes([0x51, 0x01, 0x01]) + block
+                                checksum = sum(single_room_payload) & 0xFF
+                                single_room_frame = bytes([0xAA, 0x00, len(single_room_payload)]) + single_room_payload + bytes([checksum])
+                                templates[str(room_id)] = single_room_frame.hex()
+                i = end
+            else:
+                i += 1
+        return templates
+
+    async def _async_save_captured_templates(self) -> None:
+        """Save captured templates to the config entry options."""
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            if entry.entry_id in self.hass.data[DOMAIN] and self.hass.data[DOMAIN][entry.entry_id] is self:
+                existing = dict(entry.options.get("room_templates", entry.data.get("room_templates", {})))
+                existing.update(self._captured_templates)
+                new_options = dict(entry.options)
+                new_options["room_templates"] = existing
+                self.hass.config_entries.async_update_entry(entry, options=new_options)
+                _LOGGER.info("Saved %d room template(s) to config entry options", len(self._captured_templates))
+                break

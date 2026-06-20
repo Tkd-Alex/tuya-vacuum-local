@@ -8,6 +8,7 @@ from homeassistant.components.vacuum import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -151,6 +152,9 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
                     tuya_local_entity,
                 )
 
+        room_templates = self._entry.options.get("room_templates",
+                          self._entry.data.get("room_templates", {}))
+
         return {
             "mode":       d.get("mode"),
             "water":      d.get("water"),
@@ -162,6 +166,10 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
             "tuya_local_base": tuya_local_base,
             "tuya_local_entity": tuya_local_entity,
             "integration": "Companion for TuyaLocal",
+            "room_templates_captured": list(room_templates.keys()),
+            "room_templates_missing": [rid for rid in rooms if str(rid) not in room_templates],
+            "room_capture_active": getattr(self.coordinator, "capture_active", False),
+            "room_capture_remaining": max(0, int(getattr(self.coordinator, "capture_end_time", 0) - time.time())) if getattr(self.coordinator, "capture_active", False) else 0,
         }
 
     # ── Basic services ─────────────────────────────────────────
@@ -243,7 +251,15 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         waters   = [_parse_int_or_none(x) for x in _pad(params.get("water"),   len(rooms), None)]
         passes   = [_parse_int_or_none(x) or 1 for x in _pad(params.get("passes"),  len(rooms), 1)]
 
-        room_templates = self._entry.data.get("room_templates", {})
+        room_templates = self._entry.options.get("room_templates",
+                          self._entry.data.get("room_templates", {}))
+
+        missing = [r for r in rooms if str(r) not in room_templates]
+        if missing:
+            raise HomeAssistantError(
+                f"Missing room template for room(s) {missing}. "
+                f"Please run the 'Start Room Template Capture' service first to calibrate them."
+            )
         
         # Build the sequence for a single persistent connection
         sequence = [

@@ -168,8 +168,8 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
             "integration": "Companion for TuyaLocal",
             "room_templates_captured": list(room_templates.keys()),
             "room_templates_missing": [rid for rid in rooms if str(rid) not in room_templates],
-            "room_capture_active": getattr(self.coordinator, "capture_active", False),
-            "room_capture_remaining": max(0, int(getattr(self.coordinator, "capture_end_time", 0) - time.time())) if getattr(self.coordinator, "capture_active", False) else 0,
+            "room_capture_active": False,
+            "room_capture_remaining": 0,
         }
 
     # ── Basic services ─────────────────────────────────────────
@@ -258,7 +258,10 @@ class TuyaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         if missing:
             raise HomeAssistantError(
                 f"Missing room template for room(s) {missing}. "
-                f"Please run the 'Start Room Template Capture' service first to calibrate them."
+                f"Please start a FULL CLEAN first — the robot will broadcast "
+                f"its room data automatically within ~10 minutes. "
+                f"Templates will be saved and room-specific cleaning will work "
+                f"on the next attempt."
             )
         
         # Build the sequence for a single persistent connection

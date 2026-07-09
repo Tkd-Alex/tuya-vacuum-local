@@ -35,10 +35,7 @@ const LABELS = {
     total_time: "Tempo totale",
     clean_count: "Sessioni",
     room_calibration: "Calibrazione stanze",
-    start_capture: "Avvia cattura",
-    stop_capture: "Ferma cattura",
-    capture_instructions: "Avvia la cattura, poi pulisci una stanza alla volta dall'app Tuya per registrarne i dati.",
-    capture_active: "Cattura attiva! Pulisci una stanza alla volta dall'app Tuya."
+    calibration_auto_hint: "Avvia una pulizia completa: i dati delle stanze vengono acquisiti automaticamente durante la pulizia (~10 min). La pulizia per stanza sarà disponibile dopo il primo ciclo."
   },
   en: {
     vacuum: "Tuya Vacuum",
@@ -76,10 +73,7 @@ const LABELS = {
     total_time: "Total Time",
     clean_count: "Clean Count",
     room_calibration: "Room Calibration",
-    start_capture: "Start Capture",
-    stop_capture: "Stop Capture",
-    capture_instructions: "Start capture, then clean one room at a time from the official Tuya app to record its data.",
-    capture_active: "Capture active! Clean one room at a time from the Tuya app."
+    calibration_auto_hint: "Start a full clean: room data is captured automatically during cleaning (~10 min). Room-specific cleaning will be available after the first full cycle."
   }
 };
 
@@ -108,13 +102,10 @@ class VacuumPanel extends HTMLElement {
     this._pendingAction = null;
     this._pendingTimer = null;
     this._prevStatus = null;
+    this._lastError = null;
   }
 
   disconnectedCallback() {
-    if (this._captureTimer) {
-      clearInterval(this._captureTimer);
-      this._captureTimer = null;
-    }
     if (this._mapTimer) {
       clearInterval(this._mapTimer);
       this._mapTimer = null;
@@ -339,21 +330,30 @@ class VacuumPanel extends HTMLElement {
     });
   }
 
-  _startCleaning() {
+  async _startCleaning() {
     const rooms = this._selectedRooms;
     if (rooms.length === 0) return;
     this._setPending('start');
-    this._hass.callService("vacuum", "send_command", {
-      entity_id: this._config.entity_id,
-      command: "clean_rooms",
-      params: {
-        rooms: rooms.map(Number),
-        suction: rooms.map(id => this._roomSettings[id]?.suction || this._currentSuction),
-        water: rooms.map(id => this._roomSettings[id]?.water || this._currentWater),
-        passes: rooms.map(id => this._roomSettings[id]?.passes || this._passes),
-        carpet_boost: this._carpetBoost
-      }
-    });
+    try {
+      await this._hass.callService("vacuum", "send_command", {
+        entity_id: this._config.entity_id,
+        command: "clean_rooms",
+        params: {
+          rooms: rooms.map(Number),
+          suction: rooms.map(id => this._roomSettings[id]?.suction || this._currentSuction),
+          water: rooms.map(id => this._roomSettings[id]?.water || this._currentWater),
+          passes: rooms.map(id => this._roomSettings[id]?.passes || this._passes),
+          carpet_boost: this._carpetBoost
+        }
+      });
+      this._lastError = null;
+    } catch (e) {
+      this._lastError = e.message || String(e);
+      setTimeout(() => { this._lastError = null; this._render(); }, 8000);
+    } finally {
+      this._setPending(null);
+      this._render();
+    }
   }
 
   _callService(domain, service, data = {}) {
@@ -524,9 +524,6 @@ class VacuumPanel extends HTMLElement {
     if (!stateObj || !stateObj.attributes) return '';
 
     const captured = stateObj.attributes.room_templates_captured || [];
-    const captureActive = stateObj.attributes.room_capture_active || false;
-    const remaining = stateObj.attributes.room_capture_remaining || 0;
-
     const roomsData = this._config.rooms || stateObj.attributes.rooms || {};
     let roomsArray = [];
     if (Array.isArray(roomsData)) {
@@ -537,8 +534,11 @@ class VacuumPanel extends HTMLElement {
 
     if (roomsArray.length === 0) return '';
 
+    const missing = roomsArray.filter(room => !captured.includes(String(room.id)));
+    if (missing.length === 0) return '';
+
     let roomsStatusHtml = roomsArray.map(room => {
-      const isCaptured = captured.includes(room.id);
+      const isCaptured = captured.includes(String(room.id));
       return `
         <span class="room-status-badge ${isCaptured ? 'captured' : 'missing'}">
           ${isCaptured ? '✅' : '⚠️'} ${room.name}
@@ -546,32 +546,18 @@ class VacuumPanel extends HTMLElement {
       `;
     }).join('');
 
-    let captureButton = '';
-    if (captureActive) {
-      const min = Math.floor(remaining / 60);
-      const sec = remaining % 60;
-      const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
-      captureButton = `
-        <div class="capture-active-container">
-          <div class="capture-banner">${t.capture_active} (${timeStr})</div>
-          <button class="calibration-btn btn-stop-capture" id="btn-stop-capture">${t.stop_capture}</button>
-        </div>
-      `;
-    } else {
-      captureButton = `
-        <button class="calibration-btn btn-start-capture" id="btn-start-capture">${t.start_capture}</button>
-      `;
-    }
-
     return `
-      <details class="stats-accordion calibration-accordion">
-        <summary>⚙️ ${t.room_calibration}</summary>
-        <div class="stats-content">
-          <div class="calibration-instruction">${t.capture_instructions}</div>
-          <div class="rooms-status-list">${roomsStatusHtml}</div>
-          ${captureButton}
+      <div class="stats-accordion calibration-accordion">
+        <div style="padding: 12px; font-weight: 500; display: flex; align-items: center; border-bottom: 1px solid var(--divider-color, #eee);">
+          ⚙️ ${t.room_calibration}
         </div>
-      </details>
+        <div class="stats-content" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div class="rooms-status-list">${roomsStatusHtml}</div>
+          <div class="calibration-hint" style="font-size: 0.85em; color: var(--secondary-text-color, #666); line-height: 1.3;">
+            ℹ️ ${t.calibration_auto_hint}
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -595,33 +581,7 @@ class VacuumPanel extends HTMLElement {
     const battery = vacuumState.attributes.battery_level ?? "?";
     const status = vacuumState.state;
 
-    const captureActive = vacuumState.attributes.room_capture_active || false;
-    const remaining = vacuumState.attributes.room_capture_remaining || 0;
 
-    if (captureActive) {
-      this._captureCountdown = remaining;
-      if (!this._captureTimer) {
-        this._captureTimer = setInterval(() => {
-          this._captureCountdown--;
-          if (this._captureCountdown <= 0) {
-            clearInterval(this._captureTimer);
-            this._captureTimer = null;
-          }
-          const banner = this.shadowRoot.querySelector('.capture-banner');
-          if (banner) {
-            const min = Math.floor(this._captureCountdown / 60);
-            const sec = this._captureCountdown % 60;
-            const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
-            banner.innerText = `${t.capture_active} (${timeStr})`;
-          }
-        }, 1000);
-      }
-    } else {
-      if (this._captureTimer) {
-        clearInterval(this._captureTimer);
-        this._captureTimer = null;
-      }
-    }
 
     // Read live attributes from the TuyaLocal entity
     const tuya_local_id = this._config.entity_id ? (() => {
@@ -798,18 +758,7 @@ class VacuumPanel extends HTMLElement {
         .room-status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: 500; border: 1px solid var(--divider-color, #ddd); }
         .room-status-badge.captured { background: rgba(76, 175, 80, 0.1); color: #2e7d32; border-color: rgba(76, 175, 80, 0.3); }
         .room-status-badge.missing { background: rgba(255, 152, 0, 0.1); color: #ef6c00; border-color: rgba(255, 152, 0, 0.3); }
-        .calibration-btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.9em; transition: background-color 0.2s; }
-        .btn-start-capture { background: var(--primary-color, #03a9f4); color: white; }
-        .btn-start-capture:hover { filter: brightness(1.1); }
-        .btn-stop-capture { background: #e53935; color: white; }
-        .btn-stop-capture:hover { filter: brightness(1.1); }
-        .capture-active-container { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-        .capture-banner { background: #ff9800; color: white; padding: 8px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 500; text-align: center; animation: pulse 2s infinite; }
-        @keyframes pulse {
-          0% { opacity: 0.9; }
-          50% { opacity: 0.6; }
-          100% { opacity: 0.9; }
-        }
+        .error-banner { background: #e53935; color: white; padding: 10px 12px; border-radius: 8px; font-size: 0.9em; font-weight: 500; text-align: center; margin: 8px 16px 0 16px; }
       </style>
       <div class="container">
         <div class="header">
@@ -821,6 +770,7 @@ class VacuumPanel extends HTMLElement {
         </div>
         <div class="status-bar">${this._statusBarHtml(statusIcon, statusChipClass, tuyaStatus, status, fanIcon, fanSpeed, battery, isLocating, t)}</div>
         <div class="interactive-area">
+          ${this._lastError ? `<div class="error-banner">⚠️ ${this._lastError}</div>` : ''}
           <div class="map-wrapper ${this._locked ? 'locked' : ''}" id="map-wrapper">
             ${mapUrl ? `<img id="vacuum-map" src="${mapUrl}${mapUrl.includes('?') ? '&' : '?'}t=${Date.now()}" alt="Map" />` : '<span>Map unavailable</span>'}
             <div class="map-hint">${isMobile ? t.map_hint_mobile : t.map_hint_desktop}</div>
@@ -876,22 +826,7 @@ class VacuumPanel extends HTMLElement {
     this.shadowRoot.querySelector('#btn-locate').addEventListener('click', () => this._callService("vacuum", "locate"));
     this.shadowRoot.querySelector('#btn-lock').addEventListener('click', () => { this._locked = !this._locked; this._render(); });
 
-    const startCaptureBtn = this.shadowRoot.querySelector('#btn-start-capture');
-    if (startCaptureBtn) {
-      startCaptureBtn.addEventListener('click', () => {
-        this._hass.callService("tuya_vacuum", "start_room_capture", {
-          entity_id: this._config.entity_id
-        });
-      });
-    }
-    const stopCaptureBtn = this.shadowRoot.querySelector('#btn-stop-capture');
-    if (stopCaptureBtn) {
-      stopCaptureBtn.addEventListener('click', () => {
-        this._hass.callService("tuya_vacuum", "stop_room_capture", {
-          entity_id: this._config.entity_id
-        });
-      });
-    }
+
  
     this._updateActionButtons();
   }

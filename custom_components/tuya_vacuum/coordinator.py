@@ -45,15 +45,13 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
         self._token_cache  = {"token": None, "expiry": 0.0}
         self._last_map_refresh = 0.0
         self._last_status      = "unknown"
-        self.capture_active    = False
-        self.capture_end_time  = 0.0
-        self._captured_templates = {}
-        self._capture_thread   = None
+
 
     # ── Cloud-based polling ───────────────────────────────────────
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Manual update or event-driven update for the map. Status polling is disabled in Companion mode."""
+        await self._async_check_cloud_templates()
         return {}
 
     # ── Stateless & Persistent connections ────────────────────────
@@ -239,122 +237,166 @@ class TuyaVacuumCoordinator(DataUpdateCoordinator):
             self._map_data = map_data
             _LOGGER.info("Map updated (%d bytes)", len(img))
 
-    def start_capture_session(self, duration_seconds: int = 300) -> None:
-        """Start the passive listening thread to capture room templates."""
-        if self.capture_active:
-            _LOGGER.warning("Capture session already active")
-            return
-
-        self.capture_active = True
-        self.capture_end_time = time.time() + duration_seconds
-        self._captured_templates = {}
-
-        import threading
-        self._capture_thread = threading.Thread(
-            target=self._capture_loop,
-            args=(duration_seconds,),
-            name="tuya_vacuum_capture"
-        )
-        self._capture_thread.start()
-
-    def stop_capture_session(self) -> None:
-        """Stop the active capture session."""
-        self.capture_active = False
-
-    def _capture_loop(self, duration_seconds: int) -> None:
-        """Passive receiving loop running in a background thread."""
-        _LOGGER.info("Starting room template capture session for %d seconds", duration_seconds)
-        
-        # Request TuyaLocal to temporarily release the socket
-        tuya_local_entity = self._config.get("tuya_local_entity")
-        if tuya_local_entity:
-            from homeassistant.helpers import entity_registry as er
-            import asyncio
-            registry = er.async_get(self.hass)
-            entry = registry.async_get(tuya_local_entity)
-            if entry and entry.config_entry_id:
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        self.hass.config_entries.async_reload(entry.config_entry_id),
-                        self.hass.loop
-                    ).result(timeout=3)
-                    time.sleep(1.0)  # wait for TuyaLocal to release the socket
-                except Exception as e:
-                    _LOGGER.debug("Failed to reload TuyaLocal: %s", e)
-
-        d = self._get_device(persistent=True)
-        # Set socketTimeout to 1s to react quickly to stop signal
-        d.set_socketTimeout(1)
-        start = time.time()
-        try:
-            while self.capture_active and (time.time() - start < duration_seconds):
-                try:
-                    data = d.receive()
-                    if data and "dps" in data and "15" in data["dps"]:
-                        val = data["dps"]["15"]
-                        raw = base64.b64decode(val)
-                        templates = self._extract_templates(raw)
-                        if templates:
-                            self._captured_templates.update(templates)
-                            _LOGGER.info("Captured room templates: %s", templates)
-                            # Triggers a state update on the vacuum entity so the UI gets immediate feedback
-                            self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
-                except Exception as e:
-                    # Ignore socket timeout exceptions or other connection issues
-                    _LOGGER.debug("Data receiving loop check: %s", e)
-                time.sleep(0.1)
-        finally:
-            self.capture_active = False
-            d.close()
-            _LOGGER.info("Capture session finished. Captured templates: %s", self._captured_templates)
-            
-            # Save the captured templates to the config entry options
-            if self._captured_templates:
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    self._async_save_captured_templates(),
-                    self.hass.loop
-                )
-            else:
-                # Trigger one final update list to clear active state in UI
-                self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
-
-    def _extract_templates(self, raw_bytes: bytes) -> dict[str, str]:
-        """Extract individual room template frames from a CMD 0x51 frame."""
+    def _extract_templates_from_dps(self, raw: bytes) -> dict[str, str]:
+        """Extract room templates from CMD 0x51 or CMD 0x53 frames."""
         templates = {}
         i = 0
-        while i < len(raw_bytes):
-            if raw_bytes[i] == 0xAA and i + 3 < len(raw_bytes):
-                length = (raw_bytes[i+1] << 8) | raw_bytes[i+2]
-                end = i + 3 + length
-                if end <= len(raw_bytes):
-                    fb = raw_bytes[i:end]
-                    cmd = fb[3]
-                    if cmd == 0x51 and len(fb) >= 6:
-                        num_rooms = fb[5]
-                        for r_idx in range(num_rooms):
-                            block_start = 6 + r_idx * 10
-                            block_end = block_start + 10
-                            if block_end <= len(fb):
-                                block = fb[block_start:block_end]
-                                room_id = block[0]
-                                single_room_payload = bytes([0x51, 0x01, 0x01]) + block
-                                checksum = sum(single_room_payload) & 0xFF
-                                single_room_frame = bytes([0xAA, 0x00, len(single_room_payload)]) + single_room_payload + bytes([checksum])
-                                templates[str(room_id)] = single_room_frame.hex()
-                i = end
-            else:
+        while i < len(raw):
+            if raw[i] != 0xAA or i + 3 >= len(raw):
                 i += 1
+                continue
+            length = (raw[i+1] << 8) | raw[i+2]
+            end = i + 3 + length
+            if end > len(raw):
+                i += 1
+                continue
+            frame = raw[i:end]
+            cmd = frame[3]
+
+            # Parse CMD 0x51 (Room configuration command)
+            if cmd == 0x51 and len(frame) >= 6:
+                num_rooms = frame[5]
+                for r in range(num_rooms):
+                    bs = 6 + r * 10
+                    be = bs + 10
+                    if be > len(frame):
+                        break
+                    block = frame[bs:be]
+                    room_id = block[0]
+                    if block[1] != 0x05 or block[2] != 0x00:
+                        continue
+                    # Reconstruct a single-room CMD 0x51 frame
+                    payload = bytes([0x51, 0x01, 0x01]) + bytes(block)
+                    cs = sum(payload) & 0xFF
+                    single_frame = bytes([0xAA, 0x00, len(payload)]) + payload + bytes([cs])
+                    templates[str(room_id)] = single_frame.hex()
+                    _LOGGER.debug("Extracted room template from 0x51: room_id=%d", room_id)
+
+            # Parse CMD 0x53 (Room status report)
+            elif cmd == 0x53 and len(frame) >= 6:
+                num_rooms = frame[5]
+                # CMD 0x53 has 12-byte blocks: [room_id] 05 00 [b1] [b2] [passes] [suction] [water] FF 00 FF 01
+                for r in range(num_rooms):
+                    bs = 6 + r * 12
+                    be = bs + 12
+                    if be > len(frame):
+                        break
+                    block = frame[bs:be]
+                    room_id = block[0]
+                    if block[1] != 0x05 or block[2] != 0x00:
+                        continue
+                    # Reconstruct a 10-byte block for CMD 0x51: first 8 bytes from block + 01 00
+                    block_51 = block[0:8] + bytes([0x01, 0x00])
+                    payload = bytes([0x51, 0x01, 0x01]) + block_51
+                    cs = sum(payload) & 0xFF
+                    single_frame = bytes([0xAA, 0x00, len(payload)]) + payload + bytes([cs])
+                    templates[str(room_id)] = single_frame.hex()
+                    _LOGGER.debug("Extracted room template from 0x53: room_id=%d b1=0x%02X b2=0x%02X",
+                                  room_id, block[3], block[4])
+            i = end
+
         return templates
 
-    async def _async_save_captured_templates(self) -> None:
-        """Save captured templates to the config entry options."""
-        for entry in self.hass.config_entries.async_entries(DOMAIN):
-            if entry.entry_id in self.hass.data[DOMAIN] and self.hass.data[DOMAIN][entry.entry_id] is self:
-                existing = dict(entry.options.get("room_templates", entry.data.get("room_templates", {})))
-                existing.update(self._captured_templates)
+    def _cloud_fetch_and_extract_templates(self) -> dict[str, str]:
+        """Fetch recent DP15 logs from Tuya Cloud and extract room templates."""
+        did = self._config[CONF_DEVICE_ID]
+        region = self._config.get(CONF_REGION, "eu")
+        base = REGIONS.get(region, REGIONS["eu"])
+        try:
+            token = self._get_cloud_token()
+        except Exception as e:
+            _LOGGER.error("Failed to get cloud token: %s", e)
+            return {}
+
+        now_ms = int(time.time() * 1000)
+        # Query logs from the last 2 hours (enough to capture any active clean session)
+        start_ms = now_ms - (2 * 3600 * 1000)
+        
+        # Sort keys alphabetically for the signature
+        params = {
+            "codes": "command_trans",
+            "end_time": now_ms,
+            "size": 50,
+            "start_time": start_ms,
+            "type": 7
+        }
+        sorted_keys = sorted(params.keys())
+        query_str = "&".join(f"{k}={params[k]}" for k in sorted_keys)
+        path = f"/v1.0/devices/{did}/logs?{query_str}"
+
+        try:
+            r = req.get(
+                base + path,
+                headers=self._cloud_sign("GET", path, token),
+                timeout=15
+            ).json()
+            if not r.get("success"):
+                _LOGGER.error("Failed to fetch logs from Tuya Cloud: %s", r)
+                return {}
+            logs = r.get("result", {}).get("logs", [])
+            
+            templates = {}
+            for log in logs:
+                if log.get("code") == "command_trans" and log.get("value"):
+                    try:
+                        raw = base64.b64decode(log["value"])
+                        extracted = self._extract_templates_from_dps(raw)
+                        if extracted:
+                            templates.update(extracted)
+                    except Exception as ex:
+                        _LOGGER.debug("Failed to parse log entry: %s", ex)
+            return templates
+        except Exception as e:
+            _LOGGER.error("Error fetching DP15 logs from Tuya Cloud: %s", e)
+            return {}
+
+    async def _async_check_cloud_templates(self) -> None:
+        """Query Tuya Cloud DP15 logs and extract templates if missing."""
+        if not self._config.get(CONF_CLIENT_ID) or not self._config.get(CONF_CLIENT_SECRET):
+            return
+
+        # Find our config entry
+        entry = None
+        for e in self.hass.config_entries.async_entries(DOMAIN):
+            if e.data.get(CONF_DEVICE_ID) == self._config.get(CONF_DEVICE_ID):
+                entry = e
+                break
+        if not entry:
+            return
+
+        rooms = entry.options.get("rooms", entry.data.get("rooms", {}))
+        room_templates = entry.options.get("room_templates", entry.data.get("room_templates", {}))
+        missing = [rid for rid in rooms if str(rid) not in room_templates]
+        
+        if not missing:
+            return
+
+        # Check if the vacuum is cleaning
+        tuya_local_id = entry.options.get("tuya_local_entity")
+        is_cleaning = False
+        if tuya_local_id:
+            state = self.hass.states.get(tuya_local_id)
+            if state:
+                is_cleaning = state.state in ["cleaning", "returning", "error", "selectroom", "zone_clean", "goto_pos"]
+
+        if not is_cleaning:
+            return
+
+        _LOGGER.debug("Vacuum is cleaning and missing room template(s) %s. Querying cloud logs...", missing)
+
+        # Call executor to fetch logs and parse templates
+        templates = await self.hass.async_add_executor_job(self._cloud_fetch_and_extract_templates)
+        if templates:
+            # Filter templates to only include new ones
+            new_templates = {k: v for k, v in templates.items() if k not in room_templates}
+            if new_templates:
+                _LOGGER.info("Found new room templates in cloud logs: %s", list(new_templates.keys()))
+                existing = dict(room_templates)
+                existing.update(new_templates)
                 new_options = dict(entry.options)
                 new_options["room_templates"] = existing
+                
+                # Update config entry options. This will trigger entry reload.
                 self.hass.config_entries.async_update_entry(entry, options=new_options)
-                _LOGGER.info("Saved %d room template(s) to config entry options", len(self._captured_templates))
-                break
+
+

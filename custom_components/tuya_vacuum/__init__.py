@@ -103,55 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "clean_room_by_name", handle_clean_room)
     hass.services.async_register(DOMAIN, "refresh_map", handle_refresh_map)
 
-    async def handle_start_capture(call):
-        coordinators = list(hass.data[DOMAIN].values())
-        if not coordinators:
-            _LOGGER.error("No active tuya_vacuum integrations found")
-            return
-            
-        entry_id = call.data.get("config_entry_id")
-        entity_id = call.data.get("entity_id")
-        
-        coordinator = None
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-        elif entity_id:
-            from homeassistant.helpers import entity_registry as er
-            registry = er.async_get(hass)
-            entity_entry = registry.async_get(entity_id)
-            if entity_entry and entity_entry.config_entry_id:
-                coordinator = hass.data[DOMAIN].get(entity_entry.config_entry_id)
-        
-        if not coordinator:
-            coordinator = coordinators[0]
-            
-        duration = call.data.get("duration", 300)
-        await hass.async_add_executor_job(coordinator.start_capture_session, duration)
 
-    async def handle_stop_capture(call):
-        coordinators = list(hass.data[DOMAIN].values())
-        if not coordinators:
-            return
-        entry_id = call.data.get("config_entry_id")
-        entity_id = call.data.get("entity_id")
-        
-        coordinator = None
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-        elif entity_id:
-            from homeassistant.helpers import entity_registry as er
-            registry = er.async_get(hass)
-            entity_entry = registry.async_get(entity_id)
-            if entity_entry and entity_entry.config_entry_id:
-                coordinator = hass.data[DOMAIN].get(entity_entry.config_entry_id)
-                
-        if not coordinator:
-            coordinator = coordinators[0]
-            
-        coordinator.stop_capture_session()
-
-    hass.services.async_register(DOMAIN, "start_room_capture", handle_start_capture)
-    hass.services.async_register(DOMAIN, "stop_room_capture", handle_stop_capture)
 
     # Initial map fetch to avoid 500 error on startup
     hass.async_add_executor_job(coordinator.update_map)
